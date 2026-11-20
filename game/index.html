@@ -3,230 +3,135 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puerto Alba — Open-World Crime Game</title>
 <link rel="icon" href="data:,">
-<title>Puerto Alba — Open-World Crime Story</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #1c1420; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #fff; }
-  #game { position: fixed; inset: 0; }
-  #game canvas { display: block; }
-  .panel { background: rgba(12, 10, 20, 0.72); border: 1px solid rgba(245, 197, 66, 0.45);
-    border-radius: 8px; backdrop-filter: blur(2px); }
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-size: 13px; }
-
-  /* Top-left: wanted, cash, vitals, respect */
-  #hud-top-left { position: absolute; top: 12px; left: 12px; width: 248px; }
-  #wanted-stars { font-size: 26px; letter-spacing: 3px; color: #ffd23f; text-shadow: 0 0 8px rgba(255, 80, 40, 0.8); line-height: 1; }
-  #wanted-stars.wanted-0 { color: #8a8a9a; text-shadow: none; }
-  #wanted-stars.wanted-4, #wanted-stars.wanted-5 { color: #ff5030; animation: pulse 0.7s infinite alternate; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1210;
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #fff; }
+  #game, #game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+  .hud-tl { position: absolute; top: 14px; left: 16px; }
+  .hud-stars { font-size: 34px; letter-spacing: 4px; color: #ffd76a; line-height: 1; }
+  .hud-stars.hot { color: #ff3a3a; animation: pulse 0.8s infinite alternate; }
   @keyframes pulse { from { opacity: 1; } to { opacity: 0.55; } }
-  #cash { font-size: 24px; font-weight: 800; color: #7dff8a; margin-top: 4px; text-shadow: 0 1px 2px #000; }
-  .bar-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
-  .bar-label { width: 46px; font-size: 10px; font-weight: 700; color: #cfc8e8; letter-spacing: 1px; }
-  .bar { flex: 1; height: 10px; background: rgba(255,255,255,0.16); border-radius: 5px; overflow: hidden; }
-  .bar > div { height: 100%; border-radius: 5px; }
-  #health-fill { background: linear-gradient(90deg, #37d67a, #7dff8a); width: 100%; }
-  #armor-fill { background: linear-gradient(90deg, #4a90c8, #8ac8f5); width: 50%; }
-  #rp-fill { background: linear-gradient(90deg, #f5c542, #ffd98a); width: 0%; }
-  #rank-name { font-size: 15px; font-weight: 800; color: #ffd98a; margin-top: 6px; letter-spacing: 0.5px; }
-  #respect-line { font-size: 11px; color: #cfc8e8; margin-top: 1px; }
-
-  /* Top-center: mission banner + timer + stage bars (ONE banner only) */
-  #hud-top-center { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 460px; text-align: center; }
-  #mission-banner { padding: 8px 14px 9px; display: none; }
-  #mission-banner.show { display: block; }
-  #mission-title { font-size: 17px; font-weight: 800; color: #ffd98a; letter-spacing: 0.5px; }
-  #mission-sub { font-size: 12px; color: #e8e2f5; margin-top: 2px; }
-  #mission-timer { font-size: 15px; font-weight: 700; color: #fff; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  #stage-bars { display: flex; gap: 6px; margin-top: 6px; justify-content: center; }
-  .stage-bar { width: 90px; height: 8px; background: rgba(255,255,255,0.16); border-radius: 4px; overflow: hidden; }
-  .stage-bar .stage-fill { height: 100%; width: 0%; background: #f5c542; }
-  .stage-bar.active .stage-fill { background: #ffd23f; }
-  .stage-bar.done .stage-fill { background: #37d67a; }
-
-  /* Top-right: dispatch panel + radio/clock */
-  #hud-top-right { position: absolute; top: 12px; right: 12px; width: 272px; text-align: left; }
-  #dispatch-panel { padding: 8px 10px; }
-  #dispatch-title { font-size: 12px; font-weight: 800; color: #8ac8f5; letter-spacing: 1px; border-bottom: 1px solid rgba(138,200,245,0.4); padding-bottom: 4px; }
-  .dispatch-row { display: flex; gap: 6px; font-size: 11.5px; padding: 3px 0; font-family: Consolas, monospace; }
-  .dispatch-name { flex: 1.4; color: #fff; font-weight: 700; }
-  .dispatch-role { flex: 1; color: #ffd98a; }
-  .dispatch-dist { flex: 0.7; text-align: right; color: #8ac8f5; }
-  .dispatch-quiet { color: #9a94b8; font-style: italic; }
-  #radio-line, #clock-line, #weather-line { font-size: 11.5px; color: #e8e2f5; padding: 3px 10px; margin-top: 5px; }
-  #radio-line { color: #ffd98a; font-weight: 700; }
-
-  /* Left-center: crew abilities */
-  #crew-panel { position: absolute; left: 12px; top: 46%; width: 236px; padding: 8px 10px; }
-  #crew-title { font-size: 11px; font-weight: 800; color: #ffd98a; letter-spacing: 1px; margin-bottom: 5px; }
-  .crew-row { display: flex; gap: 7px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.12); }
-  .crew-row.cooling { opacity: 0.55; }
-  .crew-key { font-weight: 800; color: #8ac8f5; font-size: 12px; padding-top: 1px; }
-  .crew-mid { flex: 1; }
-  .crew-name { font-size: 12px; font-weight: 700; }
-  .crew-ability { font-size: 11px; color: #cfc8e8; }
-  .crew-cd { font-size: 11px; font-weight: 800; color: #7dff8a; }
-  .crew-cd.cooling { color: #ff8a6a; }
-
-  /* Bottom-left: minimap + speed + car condition */
-  #minimap-wrap { position: absolute; left: 12px; bottom: 12px; }
-  #minimap { width: 200px; height: 200px; border-radius: 8px; border: 2px solid rgba(245,197,66,0.6); background: #1c1a24; display: block; }
-  #minimap-caption { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #ffd98a; margin-top: 3px; }
-  #speedo { display: none; font-size: 26px; font-weight: 800; color: #fff; text-shadow: 0 1px 3px #000; margin-top: 4px; }
-  #car-cond { display: none; font-size: 12px; font-weight: 800; margin-top: 1px; }
-  #car-cond.good { color: #7dff8a; } #car-cond.warn { color: #ffd23f; } #car-cond.bad { color: #ff5030; }
-
-  /* Bottom-right: weapon slots */
-  #weapon-slots { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
-  .wslot { width: 86px; padding: 6px 7px 7px; background: rgba(12,10,20,0.72); border: 1px solid rgba(255,255,255,0.25); border-radius: 7px; }
-  .wslot.active { border-color: #f5c542; box-shadow: 0 0 10px rgba(245,197,66,0.55); }
-  .wslot.locked { opacity: 0.55; }
-  .wslot-num { font-size: 10px; font-weight: 800; color: #8ac8f5; }
-  .wslot-name { font-size: 12.5px; font-weight: 800; }
-  .wslot-ammo { font-size: 12px; color: #7dff8a; font-family: Consolas, monospace; }
-  .wslot-lock { font-size: 9.5px; color: #ff8a6a; font-weight: 700; min-height: 11px; }
-
-  /* Bottom-center: objective + dialogue */
-  #hud-bottom-center { position: absolute; bottom: 12px; left: 34%; transform: translateX(-50%); width: 420px; text-align: center; }
-  #objective-line { font-size: 13.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; background: rgba(12,10,20,0.6); border-radius: 6px; padding: 5px 10px; display: inline-block; }
-  #dialogue-box { margin-top: 8px; padding: 9px 14px; text-align: left; display: none; }
-  #dialogue-box.show { display: block; }
-  #dialogue-name { font-size: 12px; font-weight: 800; color: #ffd98a; letter-spacing: 0.5px; }
-  #dialogue-line { font-size: 14px; color: #fff; margin-top: 2px; font-style: italic; }
-  #hint-line { margin-top: 8px; font-size: 11px; color: #cfc8e8; text-shadow: 0 1px 2px #000; }
-  #toast { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); padding: 8px 16px; font-size: 14px; font-weight: 700; color: #fff; display: none; white-space: nowrap; }
-  #toast.show { display: block; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
-  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
-  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
-  #crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
-
-  /* Overlays */
-  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
-    background: linear-gradient(160deg, rgba(46,20,60,0.92), rgba(20,12,28,0.94)); z-index: 10; text-align: center; padding: 20px; }
-  .overlay h1 { font-size: 52px; letter-spacing: 3px; color: #ffd98a; text-shadow: 0 3px 18px rgba(245,165,74,0.6); }
-  .overlay h2 { font-size: 20px; color: #ff8a6a; letter-spacing: 2px; margin-top: 6px; }
-  .overlay p { max-width: 560px; font-size: 15px; color: #e8e2f5; margin: 14px 0; line-height: 1.5; }
-  .overlay .keys { font-size: 13px; color: #cfc8e8; line-height: 1.8; margin-bottom: 18px; font-family: Consolas, monospace; }
-  .btn { pointer-events: auto; cursor: pointer; display: inline-block; background: #f5c542; color: #1c1420; border: none;
-    font-size: 17px; font-weight: 800; padding: 12px 30px; border-radius: 8px; margin: 4px; letter-spacing: 1px; }
-  .btn:hover { background: #ffd23f; }
-  .btn.ghost { background: transparent; color: #ffd98a; border: 2px solid #f5c542; }
-  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #1c1420; z-index: 20; font-size: 18px; color: #ffd98a; letter-spacing: 2px; }
-  #save-toast { position: fixed; right: 14px; bottom: 220px; padding: 7px 12px; font-size: 12px; font-weight: 700; color: #7dff8a; display: none; z-index: 6; }
-  #save-toast.show { display: block; }
+  .hud-cash { font-size: 40px; color: #7dff8a; margin-top: 4px; }
+  .hud-rank { font-size: 22px; color: #ffd76a; margin-top: 2px; }
+  .hud-rpbar { width: 220px; height: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 5px; margin-top: 4px; overflow: hidden; }
+  .hud-rpfill { height: 100%; width: 0%; background: #ffd76a; }
+  .hud-rpfill.stand { background: #2ad8c8; }
+  .hud-rptext { font-size: 14px; color: #eee; margin-top: 2px; }
+  .hud-district { font-size: 18px; color: #2ad8c8; margin-top: 8px; }
+  .hud-tc { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 480px; text-align: center; }
+  .hud-mission { background: rgba(10,10,18,0.78); border: 2px solid #ffd76a; border-radius: 10px; padding: 10px 14px; }
+  .hud-mission-title { font-size: 24px; color: #ffd76a; }
+  .hud-mission-giver { font-size: 15px; color: #cfe8ff; margin-top: 2px; }
+  .hud-mission-stage { font-size: 19px; color: #fff; margin-top: 4px; }
+  .hud-mission-timer { font-size: 16px; color: #7dff8a; margin-top: 2px; }
+  .hud-rpbar.mission { width: 100%; margin-top: 6px; }
+  .hud-insight { margin-top: 8px; display: inline-block; background: #d61a1a; color: #fff; font-size: 26px;
+    letter-spacing: 4px; padding: 6px 22px; border-radius: 8px; border: 2px solid #fff;
+    animation: pulse 0.5s infinite alternate; }
+  .hud-tr { position: absolute; top: 14px; right: 16px; text-align: right; }
+  .hud-minimap { width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.7);
+    background: #123a4a; box-shadow: 0 0 0 4px rgba(0,0,0,0.4); }
+  .hud-clock { font-size: 17px; color: #ffe9a8; margin-top: 6px; }
+  .hud-dispatch { margin-top: 8px; background: rgba(10,10,18,0.78); border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 8px; padding: 8px 10px; width: 300px; text-align: left; }
+  .hud-dispatch-title { font-size: 15px; letter-spacing: 3px; color: #ffd76a; }
+  .hud-unit { display: flex; gap: 8px; align-items: center; font-size: 15px; margin-top: 5px; }
+  .hud-unit-code { color: #fff; min-width: 52px; }
+  .hud-unit-role { color: #cfe8ff; flex: 1; }
+  .hud-unit-badge { color: #fff; font-size: 12px; padding: 2px 7px; border-radius: 4px; }
+  .hud-unit-dist { color: #aaa; font-size: 13px; }
+  .hud-dispatch-empty { font-size: 14px; color: #aaa; margin-top: 5px; font-weight: 400; }
+  .hud-bl { position: absolute; left: 16px; bottom: 14px; }
+  .hud-crew { display: flex; gap: 10px; }
+  .hud-crew-slot { width: 128px; background: rgba(10,10,18,0.75); border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 8px; padding: 7px; text-align: center; }
+  .hud-crew-avatar { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto; line-height: 44px;
+    font-size: 18px; color: #fff; border: 2px solid #fff; }
+  .hud-crew-name { font-size: 14px; margin-top: 4px; }
+  .hud-crew-ability { font-size: 12px; color: #cfe8ff; }
+  .hud-crew-state { font-size: 13px; color: #ffb02a; margin-top: 2px; }
+  .hud-crew-state.ready { color: #3ad86a; }
+  .hud-radio { margin-top: 8px; font-size: 16px; color: #ffe9a8; background: rgba(10,10,18,0.6);
+    display: inline-block; padding: 4px 10px; border-radius: 6px; }
+  .hud-bc { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); width: 480px; text-align: center; }
+  .hud-dialogue { background: rgba(10,10,18,0.85); border: 1px solid #2ad8c8; border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 8px; text-align: left; }
+  .hud-dialogue-name { font-size: 16px; color: #2ad8c8; }
+  .hud-dialogue-line { font-size: 18px; color: #fff; margin-top: 2px; font-weight: 400; }
+  .hud-hint { font-size: 19px; color: #ffd76a; }
+  .hud-br { position: absolute; right: 16px; bottom: 14px; text-align: right; }
+  .hud-speedo { background: rgba(10,10,18,0.75); border: 2px solid rgba(255,255,255,0.5); border-radius: 12px;
+    padding: 8px 16px; display: inline-block; min-width: 220px; }
+  .hud-speed-num { font-size: 64px; line-height: 1; color: #fff; display: inline; }
+  .hud-speed-unit { font-size: 18px; color: #ffd76a; display: inline; margin-left: 6px; }
+  .hud-carname { font-size: 18px; color: #2ad8c8; margin-top: 2px; }
+  .hud-rpbar.cond { width: 100%; margin-top: 6px; }
+  .hud-rpfill.cond { background: #3ad86a; }
+  .hud-nitro { margin-top: 8px; text-align: right; }
+  .hud-nitro-label { font-size: 14px; color: #ffd76a; }
+  .hud-rpbar.nitro { width: 220px; margin-left: auto; }
+  .hud-rpfill.nitro { background: #4a8aff; }
+  .hud-rpfill.nitro.boosting { background: #ff8a2a; }
+  .hud-weapons { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+  .hud-weapon { width: 104px; background: rgba(10,10,18,0.75); border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 7px; padding: 5px 6px; text-align: left; }
+  .hud-weapon.selected { border-color: #ffd76a; background: rgba(60,45,10,0.85); }
+  .hud-weapon.locked { opacity: 0.45; }
+  .hud-weapon-name { font-size: 13px; }
+  .hud-weapon-ammo { font-size: 12px; color: #cfe8ff; }
+  .hud-wheel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; background: rgba(0,0,0,0.45); gap: 8px; }
+  .hud-wheel-title { font-size: 26px; color: #ffd76a; margin-bottom: 6px; }
+  .hud-wheel-slot { width: 340px; background: rgba(10,10,18,0.85); border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 8px; padding: 8px 14px; display: flex; justify-content: space-between; font-size: 18px; }
+  .hud-wheel-slot.selected { border-color: #ffd76a; }
+  .hud-wheel-slot.locked { opacity: 0.45; }
+  .hud-shop { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 520px;
+    background: rgba(10,16,24,0.95); border: 2px solid #2ad8c8; border-radius: 12px; padding: 18px;
+    pointer-events: auto; }
+  .hud-shop-title { font-size: 26px; color: #2ad8c8; }
+  .hud-shop-cash { font-size: 17px; color: #7dff8a; margin: 6px 0 10px; }
+  .hud-shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.2); }
+  .hud-shop-name { font-size: 18px; width: 150px; }
+  .hud-shop-desc { font-size: 14px; color: #cfe8ff; flex: 1; font-weight: 400; }
+  .hud-shop-buy { font-size: 16px; font-weight: 700; background: #ffd76a; border: none; border-radius: 6px;
+    padding: 8px 14px; cursor: pointer; color: #201404; }
+  .hud-shop-buy:disabled { background: #3ad86a; cursor: default; }
+  .hud-shop-msg { font-size: 16px; color: #ffd76a; margin-top: 8px; min-height: 20px; }
+  .hud-shop-close { margin-top: 10px; font-size: 15px; font-weight: 700; background: #333; color: #fff;
+    border: 1px solid #888; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+  .hud-toast { position: absolute; top: 38%; left: 50%; transform: translateX(-50%); background: rgba(10,10,18,0.85);
+    border: 2px solid #ffd76a; border-radius: 10px; padding: 12px 22px; font-size: 21px; color: #fff;
+    max-width: 640px; text-align: center; }
+  #screens { position: fixed; inset: 0; z-index: 10; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; background: linear-gradient(180deg, rgba(20,8,4,0.82), rgba(20,8,4,0.55) 45%, rgba(20,8,4,0.85));
+    padding: 20px; }
+  .screen-kicker { font-size: 17px; letter-spacing: 5px; color: #ffd76a; font-weight: 700; }
+  .screen-title { font-size: 84px; letter-spacing: 6px; color: #fff; margin: 10px 0 4px;
+    text-shadow: 0 4px 0 #b85c2a, 0 8px 24px rgba(0,0,0,0.7); }
+  .screen-title.small { font-size: 56px; }
+  .screen-sub { font-size: 20px; color: #ffe9c8; max-width: 640px; line-height: 1.45; }
+  .screen-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; margin: 22px 0;
+    font-size: 16px; color: #dfe8ff; text-align: left; }
+  .screen-buttons { display: flex; gap: 14px; margin-top: 6px; }
+  .screen-button { font-size: 22px; font-weight: 800; padding: 14px 34px; border-radius: 10px; cursor: pointer;
+    background: #24303a; color: #fff; border: 2px solid #888; }
+  .screen-button.primary { background: #ffd76a; color: #201404; border-color: #ffd76a; }
+  .screen-foot { margin-top: 20px; font-size: 15px; color: #aaa; }
 </style>
 </head>
 <body>
 <div id="game"></div>
-<div id="loading">LOADING PUERTO ALBA…</div>
-
-<div id="hud">
-  <div id="hud-top-left">
-    <div id="wanted-stars" class="wanted-0">☆☆☆☆☆</div>
-    <div id="cash">$1,200</div>
-    <div class="bar-row"><span class="bar-label">HEALTH</span><div class="bar"><div id="health-fill"></div></div></div>
-    <div class="bar-row"><span class="bar-label">ARMOR</span><div class="bar"><div id="armor-fill"></div></div></div>
-    <div id="rank-name">Wheelman</div>
-    <div id="respect-line">RESPECT 0 RP</div>
-    <div class="bar-row"><span class="bar-label">RANK</span><div class="bar"><div id="rp-fill"></div></div></div>
-  </div>
-
-  <div id="hud-top-center">
-    <div id="mission-banner" class="panel">
-      <div id="mission-title">Puerto Alba</div>
-      <div id="mission-sub">Welcome to the city</div>
-    </div>
-    <div id="mission-timer"></div>
-    <div id="stage-bars"></div>
-  </div>
-
-  <div id="hud-top-right">
-    <div id="dispatch-panel" class="panel">
-      <div id="dispatch-title">🚔 ALBA PD — DISPATCH</div>
-      <div id="dispatch-list"></div>
-    </div>
-    <div id="radio-line" class="panel">♪ ALBA FM 98.1</div>
-    <div id="clock-line" class="panel">18:42 · GOLDEN HOUR · 31°C</div>
-    <div id="weather-line" class="panel">CLEAR · 31°C · WIND 12 km/h</div>
-  </div>
-
-  <div id="crew-panel" class="panel">
-    <div id="crew-title">CREW — THE DEBT</div>
-  </div>
-
-  <div id="minimap-wrap">
-    <canvas id="minimap" width="200" height="200"></canvas>
-    <div id="minimap-caption">PUERTO ALBA · MINIMAP</div>
-    <div id="speedo">0 mph</div>
-    <div id="car-cond" class="car-cond good">CAR 100%</div>
-  </div>
-
-  <div id="weapon-slots"></div>
-
-  <div id="hud-bottom-center">
-    <div id="objective-line">Free roam — press J to start the next job</div>
-    <div id="dialogue-box" class="panel">
-      <div id="dialogue-name">Ria Solano</div>
-      <div id="dialogue-line">“Puerto Alba at golden hour. The whole city is mine to drive.”</div>
-    </div>
-    <div id="hint-line">WASD drive / move · E steal or exit car · Click shoot · R reload · 1-6 weapons · Z/X/C crew · V radio · H horn · P pause · J next job</div>
-  </div>
-
-  <div id="toast" class="panel"></div>
-  <div id="crosshair"></div>
-</div>
-
-<div id="save-toast" class="panel">✓ Progress saved</div>
-
-<div id="start-screen" class="overlay">
-  <h1>PUERTO ALBA</h1>
-  <h2>THE DEBT — AN OPEN-WORLD CRIME STORY</h2>
-  <p id="start-sub">A sun-soaked open-world crime story. Steal cars, outrun the Alba PD, clear the debt.</p>
-  <p>Ria Solano, getaway driver, owes the Don forty grand. Eight jobs stand between her and freedom —
-  from a hot-wired Vulture GT on Marina Row to one last run across the causeway at golden hour.</p>
-  <div class="keys">WASD — drive / move &nbsp;·&nbsp; E — steal car &nbsp;·&nbsp; Mouse — aim, Click — shoot<br>
-  R — reload &nbsp;·&nbsp; 1–6 — weapons &nbsp;·&nbsp; Z / X / C — crew abilities &nbsp;·&nbsp; J — next job &nbsp;·&nbsp; P — pause</div>
-  <div>
-    <button id="start-btn" class="btn">START NEW STORY</button>
-    <button id="continue-btn" class="btn ghost">CONTINUE</button>
-  </div>
-</div>
-
-<div id="pause-screen" class="overlay">
-  <h1>PAUSED</h1>
-  <p>Puerto Alba waits for no one — except right now.</p>
-  <div>
-    <button id="resume-btn" class="btn">RESUME</button>
-    <button id="save-btn" class="btn ghost">SAVE GAME</button>
-    <button id="restart-btn" class="btn ghost">RESTART STORY</button>
-    <button id="quit-btn" class="btn ghost">MAIN MENU</button>
-  </div>
-</div>
-
-<div id="busted-screen" class="overlay">
-  <h1>BUSTED</h1>
-  <p id="busted-text">BUSTED — The Alba PD caught up with Ria.</p>
-  <div><button id="busted-btn" class="btn">WALK OUT — $500 FINE</button></div>
-</div>
-
+<div id="hud"></div>
+<div id="screens"></div>
 <script src="vendor/three.min.js"></script>
-<script src="src/utils.js"></script>
-<script src="src/save.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/input.js"></script>
-<script src="src/city.js"></script>
-<script src="src/vehicle.js"></script>
-<script src="src/traffic.js"></script>
-<script src="src/pedestrians.js"></script>
-<script src="src/player.js"></script>
-<script src="src/police.js"></script>
-<script src="src/combat.js"></script>
-<script src="src/effects.js"></script>
-<script src="src/missions.js"></script>
-<script src="src/hud.js"></script>
-<script src="src/ui.js"></script>
-<script src="src/main.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

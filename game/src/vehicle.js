@@ -1,154 +1,157 @@
-// Puerto Alba — vehicle.js
-// Arcade cars: mesh, driving physics, damage/condition, lights.
-(function () {
-  'use strict';
-  var U = PA.utils;
+// vehicle.js — car meshes + arcade driving: accel, brake, steering, nitro,
+// condition (damage), headlights, taillights. Puerto Alba.
 
-  var CAR_COLORS = [0xc22a2a, 0x2a6ac2, 0xf5c542, 0x3f8f4f, 0xe8e8e8, 0x222222, 0xc22a8a, 0x8a5a2a, 0x4a90c8, 0xe86a5a];
-  var CAR_NAMES = ['Vulture GT', 'Alba Cruiser', 'Marina Taxi', 'Night Runner', 'Palm Van', 'Bay Sedan', 'Sunset Coupe', 'Dock Pickup', 'Harbor Hatch', 'Coral Roadster'];
+import { clamp, angleDiff } from './utils.js';
 
-  function buildCarMesh(color, sporty) {
-    var g = new THREE.Group();
-    var bodyMat = new THREE.MeshLambertMaterial({ color: color });
-    var len = sporty ? 4.6 : 4.2;
-    var body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.62, len), bodyMat);
-    body.position.y = 0.55;
-    g.add(body);
-    var cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(1.7, 0.55, sporty ? 1.9 : 2.2),
-      new THREE.MeshLambertMaterial({ color: 0x1c2733 })
-    );
-    cabin.position.set(0, 1.1, sporty ? 0.25 : -0.1);
-    g.add(cabin);
-    var wheelMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
-    var wheels = [];
-    var wz = sporty ? 1.55 : 1.4;
-    var wx = 0.95;
-    [[-wx, wz], [wx, wz], [-wx, -wz], [wx, -wz]].forEach(function (p) {
-      var w = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.3, 12), wheelMat);
-      w.rotation.z = Math.PI / 2;
-      w.position.set(p[0], 0.36, p[1]);
-      g.add(w);
-      wheels.push(w);
-    });
-    var headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
-    [-0.6, 0.6].forEach(function (x) {
-      var h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.1), headMat);
-      h.position.set(x, 0.62, len / 2 + 0.02);
-      g.add(h);
-    });
-    var tailMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
-    [-0.6, 0.6].forEach(function (x) {
-      var t = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 0.1), tailMat);
-      t.position.set(x, 0.62, -len / 2 - 0.02);
-      g.add(t);
-    });
-    g.userData.wheels = wheels;
-    g.userData.tailMat = tailMat;
-    g.userData.headMat = headMat;
-    return g;
+export const CAR_NAMES = [
+  'Comet GT', 'Alba Cruiser', 'Strand Runner', 'Marina Coupe',
+  'Causeway Hauler', 'Island Cabrio', 'Dune Buggy', 'Luna Limo'
+];
+
+const CAR_COLORS = [0x2ad8c8, 0xffd76a, 0xff4a6a, 0x4a8aff, 0xf0f0f0, 0x8a4aff, 0xff8a4a, 0x3a3a3a];
+
+// Build a boxy stylized car. Returns a THREE.Group with userData.wheels.
+export function makeCarMesh(THREE, color, opts) {
+  const o = opts || {};
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color });
+  const glassMat = new THREE.MeshLambertMaterial({ color: 0x1a2a3a });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.75, 4.6), bodyMat);
+  body.position.y = 0.75;
+  g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.65, 2.3), glassMat);
+  cabin.position.set(0, 1.4, -0.2);
+  g.add(cabin);
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 0.7), bodyMat);
+  nose.position.set(0, 0.6, 2.5);
+  g.add(nose);
+  // Headlights (front = +z) and taillights.
+  const hl = new THREE.MeshBasicMaterial({ color: 0xfff2c0 });
+  const tl = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+  for (const sx of [-0.7, 0.7]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.25, 0.1), hl);
+    h.position.set(sx, 0.7, 2.86); g.add(h);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.22, 0.1), tl);
+    t.position.set(sx, 0.75, -2.32); g.add(t);
   }
+  if (o.spoiler) {
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 0.5), bodyMat);
+    sp.position.set(0, 1.35, -2.2); g.add(sp);
+  }
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 12);
+  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+  const wheels = [];
+  for (const [wx, wz] of [[-1.0, 1.5], [1.0, 1.5], [-1.0, -1.5], [1.0, -1.5]]) {
+    const w = new THREE.Mesh(wheelGeo, wheelMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(wx, 0.42, wz);
+    g.add(w); wheels.push(w);
+  }
+  g.userData.wheels = wheels;
+  return g;
+}
 
-  function Car(scene, opts) {
-    opts = opts || {};
-    this.name = opts.model || U.pick(CAR_NAMES);
-    this.color = opts.color !== undefined ? opts.color : U.pick(CAR_COLORS);
-    this.sporty = !!opts.sporty;
-    this.mesh = buildCarMesh(this.color, this.sporty);
-    this.mesh.position.set(opts.x || 0, 0, opts.z || 0);
-    this.heading = opts.heading || 0;
+export function randomCarColor() {
+  return CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
+}
+
+export class Car {
+  constructor(THREE, scene, opts) {
+    const o = opts || {};
+    this.THREE = THREE;
+    this.name = o.name || CAR_NAMES[Math.floor(Math.random() * CAR_NAMES.length)];
+    this.color = o.color !== undefined ? o.color : randomCarColor();
+    this.mesh = makeCarMesh(THREE, this.color, o);
+    this.mesh.position.set(o.x || 0, 0, o.z || 0);
+    this.heading = o.heading || 0;
     this.mesh.rotation.y = this.heading;
-    this.speed = 0;
-    this.maxSpeed = this.sporty ? 42 : 30;
-    this.accel = this.sporty ? 22 : 15;
-    this.condition = opts.condition !== undefined ? opts.condition : 100;
-    this.isPlayer = !!opts.isPlayer;
-    this.isPolice = !!opts.isPolice;
-    this.stolen = false;
-    this.braking = false;
-    this.horn = 0;
-    this.alive = true;
+    this.speed = 0; // m/s, forward positive
+    this.topSpeed = o.topSpeed || 34;
+    this.accel = o.accel || 16;
+    this.condition = o.condition !== undefined ? o.condition : 100;
+    this.health = o.health !== undefined ? o.health : 100;
+    this.isPlayer = !!o.isPlayer;
+    this.isPolice = !!o.isPolice;
+    this.isRival = !!o.isRival;
+    this.burning = false;
+    this.nitro = o.nitro !== undefined ? o.nitro : 100;
+    this.nitroActive = false;
+    this.slipstream = 0; // seconds of crew speed boost left
     scene.add(this.mesh);
+    this.scene = scene;
   }
 
-  Car.prototype.forward = function () {
-    return { x: Math.sin(this.heading), z: Math.cos(this.heading) };
-  };
+  get x() { return this.mesh.position.x; }
+  get z() { return this.mesh.position.z; }
+  setPos(x, z, heading) {
+    this.mesh.position.x = x; this.mesh.position.z = z;
+    if (heading !== undefined) { this.heading = heading; this.mesh.rotation.y = heading; }
+  }
 
-  Car.prototype.drive = function (dt, throttle, steer, world) {
-    // throttle: -1..1, steer: -1..1
-    var accel = throttle * this.accel;
-    if (throttle < 0) accel = throttle * this.accel * 0.8;
-    this.speed += accel * dt;
-    // Drag + rolling resistance.
-    this.speed -= this.speed * 0.55 * dt;
-    if (throttle === 0) this.speed -= this.speed * 0.9 * dt;
-    this.speed = U.clamp(this.speed, -12, this.maxSpeed);
-    if (Math.abs(this.speed) < 0.05 && throttle === 0) this.speed = 0;
-    var steerAmt = steer * 1.9 * dt * U.clamp(Math.abs(this.speed) / 8, 0, 1);
-    if (this.speed < 0) steerAmt = -steerAmt;
-    this.heading += steerAmt;
-    var f = this.forward();
-    var nx = this.mesh.position.x + f.x * this.speed * dt;
-    var nz = this.mesh.position.z + f.z * this.speed * dt;
-    if (world) {
-      var hit = world.collide(nx, nz, 1.6);
-      if (Math.abs(hit.x - nx) > 0.01 || Math.abs(hit.z - nz) > 0.01) {
-        this.speed *= 0.45;
-        this.damage(2 * dt * 60 * 0.1);
+  damage(amount) {
+    this.condition = clamp(this.condition - amount, 0, 100);
+    this.health = clamp(this.health - amount, 0, 100);
+    if (this.health <= 0 && !this.burning) this.burning = true;
+    return this.health <= 0;
+  }
+  repair() { this.condition = 100; this.health = 100; this.burning = false; }
+
+  // Arcade update. input: {throttle, steer, nitro} — nitro only if kit owned.
+  update(dt, input, nitroOwned) {
+    const top = this.topSpeed * (this.slipstream > 0 ? 1.25 : 1);
+    if (this.slipstream > 0) this.slipstream -= dt;
+    let boosting = false;
+    if (input && input.nitro && nitroOwned && this.nitro > 0 && input.throttle > 0) {
+      boosting = true;
+      this.nitro = clamp(this.nitro - dt * 34, 0, 100);
+    } else {
+      this.nitro = clamp(this.nitro + dt * 7, 0, 100);
+    }
+    this.nitroActive = boosting;
+    const topNow = boosting ? top * 1.45 : top;
+    if (input) {
+      const th = input.throttle || 0;
+      if (th > 0) this.speed += this.accel * (boosting ? 1.9 : 1) * dt;
+      else if (th < 0) {
+        if (this.speed > 0.5) this.speed -= this.accel * 1.6 * dt; // brake
+        else this.speed -= this.accel * 0.55 * dt; // reverse
+      } else {
+        this.speed -= this.speed * 1.4 * dt; // drag
       }
-      nx = hit.x;
-      nz = hit.z;
+      const maxRev = -12;
+      this.speed = clamp(this.speed, maxRev, topNow);
+      if (Math.abs(this.speed) < 0.05 && th === 0) this.speed = 0;
+      const steerAmt = (input.steer || 0) * clamp(Math.abs(this.speed) / 10, 0, 1) * 1.9 * dt;
+      // Steering turns the car in the direction of travel.
+      this.heading += steerAmt * (this.speed >= 0 ? 1 : -1);
+      const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+      this.mesh.position.x += fx * this.speed * dt;
+      this.mesh.position.z += fz * this.speed * dt;
+      this.mesh.rotation.y = this.heading;
+      // Wheel spin.
+      const spin = this.speed * dt * 2.2;
+      for (const w of this.mesh.userData.wheels) w.rotation.x += spin;
+      // Body lean.
+      this.mesh.rotation.z = -steerAmt * 2.2;
     }
-    this.mesh.position.x = nx;
-    this.mesh.position.z = nz;
+  }
+
+  // Simple chase steering toward a target point. Returns nothing.
+  chase(dt, tx, tz, topSpeed) {
+    const dx = tx - this.x, dz = tz - this.z;
+    const want = Math.atan2(dx, dz);
+    const diff = angleDiff(this.heading, want);
+    this.heading += clamp(diff, -1.6 * dt, 1.6 * dt);
+    this.speed = clamp(this.speed + 12 * dt, 0, topSpeed || 30);
+    const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+    this.mesh.position.x += fx * this.speed * dt;
+    this.mesh.position.z += fz * this.speed * dt;
     this.mesh.rotation.y = this.heading;
-    var spin = (this.speed * dt) / 0.36;
-    var wheels = this.mesh.userData.wheels;
-    for (var i = 0; i < wheels.length; i++) wheels[i].rotation.x += spin;
-    this.mesh.rotation.z = -steer * U.clamp(Math.abs(this.speed) / 30, 0, 1) * 0.04;
-    this.braking = throttle < 0 && this.speed > 1;
-    return this.speed;
-  };
-
-  Car.prototype.damage = function (amount) {
-    this.condition = U.clamp(this.condition - amount, 0, 100);
-    if (this.condition <= 0 && this.alive) {
-      this.alive = false;
-      if (PA.effects) PA.effects.spawnExplosion(this.mesh.position.x, 1, this.mesh.position.z, 1.2);
-      if (PA.audio) PA.audio.boom();
-    }
-  };
-
-  Car.prototype.repair = function (amount) {
-    this.condition = U.clamp(this.condition + amount, 0, 100);
-    if (this.condition > 0) this.alive = true;
-  };
-
-  Car.prototype.remove = function (scene) {
-    scene.remove(this.mesh);
-  };
-
-  function makeParkedCars(scene, spots) {
-    var cars = [];
-    spots.forEach(function (s) {
-      var c = new Car(scene, { x: s.x, z: s.z, heading: s.heading, color: s.color, model: s.model, sporty: s.sporty });
-      cars.push(c);
-    });
-    return cars;
+    const spin = this.speed * dt * 2.2;
+    for (const w of this.mesh.userData.wheels) w.rotation.x += spin;
   }
 
-  function nearestCar(cars, x, z, maxDist) {
-    var best = null, bestD = maxDist || 6;
-    for (var i = 0; i < cars.length; i++) {
-      var c = cars[i];
-      if (!c.alive) continue;
-      var d = U.dist2(x, z, c.mesh.position.x, c.mesh.position.z);
-      if (d < bestD) { bestD = d; best = c; }
-    }
-    return best;
+  dispose() {
+    this.scene.remove(this.mesh);
   }
-
-  window.PA = window.PA || {};
-  PA.vehicle = { Car: Car, makeParkedCars: makeParkedCars, nearestCar: nearestCar, CAR_COLORS: CAR_COLORS, CAR_NAMES: CAR_NAMES };
-})();
+}

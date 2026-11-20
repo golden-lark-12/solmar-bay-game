@@ -1,142 +1,81 @@
-// Puerto Alba — combat.js
-// Six weapon slots: fists to launcher, ammo, reload, hit tests.
-(function () {
-  'use strict';
-  var U = PA.utils;
+// combat.js — weapons, shooting, weapon wheel (hold Tab).
+// Six weapons, three unlocked by missions. Puerto Alba.
 
-  var WEAPONS = [
-    { name: 'Fists', key: '1', damage: 12, range: 2.6, rate: 0.45, auto: false, ammo: Infinity, maxAmmo: Infinity, locked: false, desc: 'Knuckles' },
-    { name: 'Pistol', key: '2', damage: 22, range: 42, rate: 0.28, auto: false, ammo: 60, maxAmmo: 60, locked: false, desc: 'AP-9 sidearm' },
-    { name: 'SMG', key: '3', damage: 14, range: 36, rate: 0.09, auto: true, ammo: 120, maxAmmo: 120, locked: false, desc: 'Buzz-9 spray' },
-    { name: 'Shotgun', key: '4', damage: 16, range: 20, rate: 0.85, auto: false, ammo: 24, maxAmmo: 24, locked: true, desc: 'Boomstick', unlockAt: 2 },
-    { name: 'Rifle', key: '5', damage: 38, range: 70, rate: 0.16, auto: true, ammo: 90, maxAmmo: 90, locked: true, desc: 'Longshot-7', unlockAt: 4 },
-    { name: 'Launcher', key: '6', damage: 120, range: 60, rate: 1.4, auto: false, ammo: 6, maxAmmo: 6, locked: true, desc: 'Firework XL', unlockAt: 6 }
-  ];
+export const WEAPONS = [
+  { name: 'Pistol', damage: 12, ammo: 120, maxAmmo: 120, unlockJob: null, range: 60 },
+  { name: 'SMG', damage: 9, ammo: 240, maxAmmo: 240, unlockJob: null, range: 55 },
+  { name: 'Pump Shotgun', damage: 34, ammo: 48, maxAmmo: 48, unlockJob: 'M3', range: 28 },
+  { name: 'Carbine', damage: 22, ammo: 180, maxAmmo: 180, unlockJob: 'M5', range: 90 },
+  { name: 'Grenade Launcher', damage: 90, ammo: 12, maxAmmo: 12, unlockJob: 'M7', range: 70 },
+  { name: 'Sniper', damage: 80, ammo: 20, maxAmmo: 20, unlockJob: 'M11', range: 140 }
+];
 
-  function Combat(state) {
-    this.state = state; // campaign state: weaponsUnlocked, ammo
-    this.current = 1;
+export class Combat {
+  constructor() {
+    this.weapons = WEAPONS.map(w => Object.assign({}, w, { unlocked: !w.unlockJob }));
+    this.selected = 0;
+    this.wheelOpen = false;
     this.cooldown = 0;
-    this.reloadT = 0;
-    this.kills = 0;
-    this.shotsFired = 0;
-    this.syncFromState();
+    this.lastShotAt = 0;
   }
 
-  Combat.prototype.syncFromState = function () {
-    for (var i = 0; i < WEAPONS.length; i++) {
-      WEAPONS[i].locked = !(this.state.weaponsUnlocked[i]);
-      if (isFinite(WEAPONS[i].maxAmmo)) {
-        WEAPONS[i].ammo = this.state.ammo[i] || 0;
-      }
+  unlockForJob(jobId) {
+    for (const w of this.weapons) {
+      if (w.unlockJob === jobId) w.unlocked = true;
     }
-  };
+  }
+  unlockedWeapons() { return this.weapons.filter(w => w.unlocked); }
 
-  Combat.prototype.syncToState = function () {
-    for (var i = 0; i < WEAPONS.length; i++) {
-      this.state.weaponsUnlocked[i] = !WEAPONS[i].locked;
-      if (isFinite(WEAPONS[i].maxAmmo)) this.state.ammo[i] = WEAPONS[i].ammo;
+  select(i) {
+    if (i >= 0 && i < this.weapons.length && this.weapons[i].unlocked) {
+      this.selected = i;
+      return true;
     }
-  };
+    return false;
+  }
+  cycle() {
+    const list = this.unlockedWeapons();
+    if (!list.length) return;
+    const idx = list.indexOf(this.weapons[this.selected]);
+    const next = list[(idx + 1) % list.length];
+    this.selected = this.weapons.indexOf(next);
+  }
 
-  Combat.prototype.weapon = function () { return WEAPONS[this.current]; };
+  current() { return this.weapons[this.selected]; }
 
-  Combat.prototype.select = function (index) {
-    if (index < 0 || index >= WEAPONS.length) return false;
-    if (WEAPONS[index].locked) {
-      if (PA.hud) PA.hud.toast(WEAPONS[index].name + ' is LOCKED — finish job M' + (WEAPONS[index].unlockAt || 2) + ' to unlock it');
-      if (PA.audio) PA.audio.bad();
-      return false;
+  // Fire from (x,z) along heading. Returns a shot record for effects/sound,
+  // or null when on cooldown / out of ammo / wheel open.
+  tryFire(now, x, z, heading) {
+    if (this.wheelOpen) return null;
+    if (now - this.lastShotAt < 0.28) return null;
+    const w = this.current();
+    if (!w.unlocked || w.ammo <= 0) return null;
+    this.lastShotAt = now;
+    w.ammo -= 1;
+    const spread = w.name === 'Pump Shotgun' ? 0.09 : 0.02;
+    return {
+      weapon: w.name, damage: w.damage, range: w.range,
+      x, z, heading: heading + (Math.random() - 0.5) * spread,
+      explosive: w.name === 'Grenade Launcher'
+    };
+  }
+
+  // Resolve a shot against a list of targets {x, z, radius, onHit(damage, explosive)}.
+  // Returns the hit target (or null) and the impact point.
+  resolveShot(shot, targets) {
+    if (!shot) return null;
+    const fx = Math.sin(shot.heading), fz = Math.cos(shot.heading);
+    let best = null, bestT = shot.range;
+    for (const t of targets) {
+      const dx = t.x - shot.x, dz = t.z - shot.z;
+      const along = dx * fx + dz * fz;
+      if (along < 0 || along > shot.range) continue;
+      const perp = Math.abs(dx * fz - dz * fx);
+      if (perp > (t.radius || 3)) continue;
+      if (along < bestT) { bestT = along; best = t; }
     }
-    this.current = index;
-    if (PA.audio) PA.audio.blip();
-    return true;
-  };
-
-  Combat.prototype.unlockForMission = function (missionNumber) {
-    var changed = [];
-    for (var i = 0; i < WEAPONS.length; i++) {
-      if (WEAPONS[i].unlockAt === missionNumber && WEAPONS[i].locked) {
-        WEAPONS[i].locked = false;
-        WEAPONS[i].ammo = WEAPONS[i].maxAmmo;
-        changed.push(WEAPONS[i].name);
-      }
-    }
-    if (changed.length) this.syncToState();
-    return changed;
-  };
-
-  Combat.prototype.canFire = function () {
-    var w = WEAPONS[this.current];
-    if (this.cooldown > 0 || this.reloadT > 0) return false;
-    if (w.ammo !== Infinity && w.ammo <= 0) return false;
-    return true;
-  };
-
-  Combat.prototype.reload = function () {
-    var w = WEAPONS[this.current];
-    if (!isFinite(w.maxAmmo) || w.ammo >= w.maxAmmo || this.reloadT > 0) return;
-    this.reloadT = 1.1;
-    if (PA.audio) PA.audio.blip();
-  };
-
-  // Fires from origin along heading. Targets: { list, pos(), hurt(dmg), radius }.
-  Combat.prototype.fire = function (origin, heading, targets, world) {
-    var w = WEAPONS[this.current];
-    if (!this.canFire()) {
-      if (w.ammo === 0 && this.cooldown <= 0 && PA.hud) PA.hud.toast('Out of ammo — press R to reload');
-      return false;
-    }
-    this.cooldown = w.rate;
-    this.shotsFired++;
-    if (w.ammo !== Infinity) w.ammo--;
-    if (PA.audio) PA.audio.shot();
-    var fx = Math.sin(heading), fz = Math.cos(heading);
-    var mx = origin.x + fx * 1.2, my = (origin.y || 1.2), mz = origin.z + fz * 1.2;
-    if (PA.effects) PA.effects.spawnMuzzle(mx, my, mz, heading);
-    var pellets = w.name === 'Shotgun' ? 5 : 1;
-    var hitAny = false;
-    for (var p = 0; p < pellets; p++) {
-      var spread = (w.name === 'Shotgun' ? U.rand(-0.09, 0.09) : U.rand(-0.015, 0.015));
-      var hx = Math.sin(heading + spread), hz = Math.cos(heading + spread);
-      for (var i = 0; i < targets.length; i++) {
-        var t = targets[i];
-        if (!t.alive) continue;
-        var tp = t.pos();
-        var dx = tp.x - mx, dz = tp.z - mz;
-        var along = dx * hx + dz * hz;
-        if (along < 0 || along > w.range) continue;
-        var perp = Math.abs(dx * hz - dz * hx);
-        if (perp < (t.radius || 1.2)) {
-          t.hurt(w.damage);
-          hitAny = true;
-          if (PA.effects) PA.effects.spawnSparks(tp.x, 1.2, tp.z);
-          if (t.dead || t.health <= 0) this.kills++;
-          break;
-        }
-      }
-    }
-    if (w.name === 'Launcher' && PA.effects) {
-      PA.effects.spawnExplosion(mx + fx * 14, 1, mz + fz * 14, 1.6);
-      if (PA.audio) PA.audio.boom();
-    }
-    this.syncToState();
-    return hitAny;
-  };
-
-  Combat.prototype.update = function (dt) {
-    if (this.cooldown > 0) this.cooldown -= dt;
-    if (this.reloadT > 0) {
-      this.reloadT -= dt;
-      if (this.reloadT <= 0) {
-        var w = WEAPONS[this.current];
-        w.ammo = w.maxAmmo;
-        this.syncToState();
-        if (PA.hud) PA.hud.toast(w.name + ' reloaded');
-      }
-    }
-  };
-
-  window.PA = window.PA || {};
-  PA.combat = { Combat: Combat, WEAPONS: WEAPONS };
-})();
+    const ix = shot.x + fx * bestT, iz = shot.z + fz * bestT;
+    if (best) best.onHit(shot.damage, shot.explosive, ix, iz);
+    return { hit: best, ix, iz, explosive: shot.explosive };
+  }
+}

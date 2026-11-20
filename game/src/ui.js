@@ -1,87 +1,84 @@
-// Puerto Alba — ui.js
-// Menus and overlays: start screen, pause, busted, mission recap.
-(function () {
-  'use strict';
-  var U = PA.utils;
+// ui.js — start screen, pause screen, busted/wasted overlay.
+// Puerto Alba.
 
-  var refs = {};
-  var callbacks = {};
+import { el } from './utils.js';
 
-  function $(id) { return document.getElementById(id); }
-
-  function init(cbs) {
-    callbacks = cbs || {};
-    refs.startScreen = $('start-screen');
-    refs.startTitle = $('start-title');
-    refs.startSub = $('start-sub');
-    refs.startBtn = $('start-btn');
-    refs.continueBtn = $('continue-btn');
-    refs.pauseScreen = $('pause-screen');
-    refs.resumeBtn = $('resume-btn');
-    refs.restartBtn = $('restart-btn');
-    refs.saveBtn = $('save-btn');
-    refs.quitBtn = $('quit-btn');
-    refs.bustedScreen = $('busted-screen');
-    refs.bustedText = $('busted-text');
-    refs.bustedBtn = $('busted-btn');
-    refs.saveToast = $('save-toast');
-    refs.loading = $('loading');
-
-    if (refs.startBtn) refs.startBtn.addEventListener('click', function () { if (callbacks.onStart) callbacks.onStart(false); });
-    if (refs.continueBtn) refs.continueBtn.addEventListener('click', function () { if (callbacks.onStart) callbacks.onStart(true); });
-    if (refs.resumeBtn) refs.resumeBtn.addEventListener('click', function () { if (callbacks.onResume) callbacks.onResume(); });
-    if (refs.restartBtn) refs.restartBtn.addEventListener('click', function () { if (callbacks.onRestart) callbacks.onRestart(); });
-    if (refs.saveBtn) refs.saveBtn.addEventListener('click', function () { if (callbacks.onSave) callbacks.onSave(); });
-    if (refs.quitBtn) refs.quitBtn.addEventListener('click', function () { if (callbacks.onQuit) callbacks.onQuit(); });
-    if (refs.bustedBtn) refs.bustedBtn.addEventListener('click', function () { if (callbacks.onBusted) callbacks.onBusted(); });
+export class Ui {
+  constructor() {
+    this.root = document.getElementById('screens');
+    this.onPlay = null;
+    this.onContinue = null;
+    this.onResume = null;
+    this.onRestart = null;
+    this.buildStart();
+    this.buildPause();
+    this.buildEnd();
   }
 
-  function showStart(hasSave, stats) {
-    if (!refs.startScreen) return;
-    refs.startScreen.style.display = 'flex';
-    if (refs.continueBtn) refs.continueBtn.style.display = hasSave ? 'inline-block' : 'none';
-    if (refs.startSub && stats) {
-      refs.startSub.textContent = stats;
-    }
+  buildStart() {
+    this.startEl = el('div', 'screen start-screen', null, this.root);
+    el('div', 'screen-kicker', 'A SUN-SOAKED OPEN-WORLD CRIME GAME', this.startEl);
+    el('h1', 'screen-title', 'PUERTO ALBA', this.startEl);
+    el('div', 'screen-sub', 'Ria Solano owes Don Rafael Alba $40,000. Drive, steal, race and fight your way out of the debt.', this.startEl);
+    const controls = el('div', 'screen-controls', null, this.startEl);
+    const lines = [
+      'WASD / Arrows — drive & walk', 'E — steal / enter car', 'Shift — nitro boost (with Nitro Kit)',
+      'Mouse click — shoot', 'Tab (hold) — weapon wheel', 'F — swap weapon',
+      'Z / X / C — crew abilities', 'G — garage shop (near Alba Garage)', 'M — start next job', 'P — pause'
+    ];
+    for (const l of lines) el('div', 'screen-control', l, controls);
+    const btns = el('div', 'screen-buttons', null, this.startEl);
+    this.playBtn = el('button', 'screen-button primary', 'START ENGINE', btns);
+    this.playBtn.addEventListener('click', () => { if (this.onPlay) this.onPlay(); });
+    this.continueBtn = el('button', 'screen-button', 'CONTINUE', btns);
+    this.continueBtn.style.display = 'none';
+    this.continueBtn.addEventListener('click', () => { if (this.onContinue) this.onContinue(); });
+    el('div', 'screen-foot', '12 story jobs · 5 districts · street races · garage upgrades · crew · radio', this.startEl);
   }
 
-  function hideStart() {
-    if (refs.startScreen) refs.startScreen.style.display = 'none';
+  buildPause() {
+    this.pauseEl = el('div', 'screen pause-screen', null, this.root);
+    this.pauseEl.style.display = 'none';
+    el('h1', 'screen-title small', 'PAUSED', this.pauseEl);
+    el('div', 'screen-sub', 'Puerto Alba is waiting. The heat is not.', this.pauseEl);
+    const btns = el('div', 'screen-buttons', null, this.pauseEl);
+    this.resumeBtn = el('button', 'screen-button primary', 'RESUME', btns);
+    this.resumeBtn.addEventListener('click', () => { if (this.onResume) this.onResume(); });
+    this.restartBtn = el('button', 'screen-button', 'RESTART FROM SAVE', btns);
+    this.restartBtn.addEventListener('click', () => { if (this.onRestart) this.onRestart(); });
   }
 
-  function showPause() {
-    if (refs.pauseScreen) refs.pauseScreen.style.display = 'flex';
+  buildEnd() {
+    this.endEl = el('div', 'screen end-screen', null, this.root);
+    this.endEl.style.display = 'none';
+    this.endTitle = el('h1', 'screen-title small', 'BUSTED', this.endEl);
+    this.endSub = el('div', 'screen-sub', '', this.endEl);
+    const btns = el('div', 'screen-buttons', null, this.endEl);
+    this.endBtn = el('button', 'screen-button primary', 'TRY AGAIN', btns);
+    this.endBtn.addEventListener('click', () => { if (this.onRestart) this.onRestart(); });
   }
 
-  function hidePause() {
-    if (refs.pauseScreen) refs.pauseScreen.style.display = 'none';
+  showStart(hasSave) {
+    this.startEl.style.display = 'flex';
+    this.pauseEl.style.display = 'none';
+    this.endEl.style.display = 'none';
+    this.continueBtn.style.display = hasSave ? 'inline-block' : 'none';
   }
-
-  function showBusted(text) {
-    if (!refs.bustedScreen) return;
-    if (refs.bustedText) refs.bustedText.textContent = text || 'BUSTED — The Alba PD caught up with Ria.';
-    refs.bustedScreen.style.display = 'flex';
+  showPause() {
+    this.pauseEl.style.display = 'flex';
+    this.startEl.style.display = 'none';
+    this.endEl.style.display = 'none';
   }
-
-  function hideBusted() {
-    if (refs.bustedScreen) refs.bustedScreen.style.display = 'none';
+  showEnd(title, sub) {
+    this.endTitle.textContent = title;
+    this.endSub.textContent = sub;
+    this.endEl.style.display = 'flex';
+    this.startEl.style.display = 'none';
+    this.pauseEl.style.display = 'none';
   }
-
-  function flashSaved() {
-    if (!refs.saveToast) return;
-    refs.saveToast.classList.add('show');
-    setTimeout(function () { refs.saveToast.classList.remove('show'); }, 1800);
+  hideAll() {
+    this.startEl.style.display = 'none';
+    this.pauseEl.style.display = 'none';
+    this.endEl.style.display = 'none';
   }
-
-  function hideLoading() {
-    if (refs.loading) refs.loading.style.display = 'none';
-  }
-
-  window.PA = window.PA || {};
-  PA.ui = {
-    init: init, showStart: showStart, hideStart: hideStart,
-    showPause: showPause, hidePause: hidePause,
-    showBusted: showBusted, hideBusted: hideBusted,
-    flashSaved: flashSaved, hideLoading: hideLoading
-  };
-})();
+}

@@ -1,349 +1,321 @@
-// Puerto Alba — missions.js
-// "The Debt": eight story jobs with named givers, dialogue, stages,
-// rewards, respect progression and weapon unlocks.
-(function () {
-  'use strict';
-  var U = PA.utils;
+// missions.js — the story of "The Debt": 12 jobs, each with a named giver,
+// three lines of dialogue, stages (steal / reach / hold / escape / wreck /
+// race / buy), cash + respect rewards, weapon unlocks. Puerto Alba.
 
-  var MISSIONS = [
-    {
-      num: 1, title: 'Hot Wheels', giver: 'Marco "Wrench" Vela', giverRole: 'Chop-shop boss',
-      briefing: 'Steal the red Vulture GT parked on Marina Row and bring it to the garage.',
-      dialogue: [
-        { who: 'Marco "Wrench" Vela', line: 'Ria. You owe the Don forty grand. Tonight you start paying it back.' },
-        { who: 'Ria Solano', line: 'Forty grand? I drove one job, Marco. One.' },
-        { who: 'Marco "Wrench" Vela', line: 'Then drive another. Red Vulture GT, Marina Row. Don\'t scratch it.' }
-      ],
-      stages: [
-        { text: 'Steal the red Vulture GT', type: 'steal', carModel: 'Vulture GT' },
-        { text: 'Deliver it to the garage', type: 'reach', target: { x: -52, z: -8 }, radius: 8, needCar: true }
-      ],
-      rewardCash: 2500, rewardRP: 120
-    },
-    {
-      num: 2, title: 'The Drop', giver: 'Lena Cruz', giverRole: 'Fixer',
-      briefing: 'Pick up the package at the marina and drop it at the palms — no cops, no questions.',
-      dialogue: [
-        { who: 'Lena Cruz', line: 'Package is at the marina kiosk. You take it, you do not open it.' },
-        { who: 'Ria Solano', line: 'And if the cops get curious?' },
-        { who: 'Lena Cruz', line: 'Then you drive like the wheelwoman you claim to be.' }
-      ],
-      stages: [
-        { text: 'Pick up the package at the marina', type: 'reach', target: { x: -60, z: 160 }, radius: 7 },
-        { text: 'Drop it at the palm row', type: 'reach', target: { x: 120, z: 150 }, radius: 7 }
-      ],
-      rewardCash: 3200, rewardRP: 140
-    },
-    {
-      num: 3, title: 'Causeway Run', giver: 'Dario Font', giverRole: 'Street racer',
-      briefing: 'Outrun the Alba PD across the causeway to the island. Lose them or outrun them — your call.',
-      dialogue: [
-        { who: 'Dario Font', line: 'The cops set a roadblock on the causeway every Friday. Tonight is Friday.' },
-        { who: 'Ria Solano', line: 'So I drive straight through it. Great plan, Dario.' },
-        { who: 'Dario Font', line: 'No — you drive around it. Fast. The island is the finish line.' }
-      ],
-      stages: [
-        { text: 'Reach the causeway entrance', type: 'reach', target: { x: 0, z: 140 }, radius: 9, needCar: true },
-        { text: 'Cross the causeway to the island', type: 'reach', target: { x: 0, z: 252 }, radius: 10, needCar: true },
-        { text: 'Lose the heat — get wanted to 0', type: 'escape' }
-      ],
-      rewardCash: 5000, rewardRP: 200
-    },
-    {
-      num: 4, title: 'Harbor Lights', giver: 'Sofia Marin', giverRole: 'Smuggler',
-      briefing: 'Meet Sofia\'s boat crew at the docks after dark and cover the unload while the harbor patrol circles.',
-      dialogue: [
-        { who: 'Sofia Marin', line: 'My boat docks at midnight. Harbor patrol does a sweep every ten minutes.' },
-        { who: 'Ria Solano', line: 'What do you need me for, then?' },
-        { who: 'Sofia Marin', line: 'A fast car parked the wrong way, and a driver who does not panic.' }
-      ],
-      stages: [
-        { text: 'Meet the boat at the docks', type: 'reach', target: { x: -128, z: 68 }, radius: 8 },
-        { text: 'Hold the dock for 45 seconds', type: 'hold', seconds: 45, target: { x: -128, z: 68 }, radius: 12 }
-      ],
-      rewardCash: 4200, rewardRP: 180
-    },
-    {
-      num: 5, title: 'The Vault Job', giver: 'Elias "Ledger" Prado', giverRole: 'Inside man',
-      briefing: 'Drive the crew to the bank on Commerce Row, wait out the alarm, then get everyone clear.',
-      dialogue: [
-        { who: 'Elias "Ledger" Prado', line: 'The vault timer is ninety seconds. The alarm is instant.' },
-        { who: 'Jax', line: 'Ninety seconds of cops. Ria, you better have the car running.' },
-        { who: 'Ria Solano', line: 'I always have the car running.' }
-      ],
-      stages: [
-        { text: 'Drive the crew to the bank', type: 'reach', target: { x: 60, z: -60 }, radius: 8, needCar: true },
-        { text: 'Wait out the vault timer', type: 'hold', seconds: 30, target: { x: 60, z: -60 }, radius: 14 },
-        { text: 'Escape to the garage', type: 'reach', target: { x: -52, z: -8 }, radius: 8, needCar: true }
-      ],
-      rewardCash: 9000, rewardRP: 320
-    },
-    {
-      num: 6, title: 'Ghost in the Machine', giver: 'Mina Okafor', giverRole: 'Crew hacker',
-      briefing: 'Mina needs the car parked under the traffic camera grid while she loops the feeds. Stay in the zone.',
-      dialogue: [
-        { who: 'Mina Okafor', line: 'Park under the camera pole on Meridian and do not move for sixty seconds.' },
-        { who: 'Ria Solano', line: 'Sixty seconds under a police camera. You are the worst.' },
-        { who: 'Mina Okafor', line: 'I am the best. That is why the feed loops instead of watching you.' }
-      ],
-      stages: [
-        { text: 'Park under the camera grid', type: 'reach', target: { x: 60, z: 60 }, radius: 8, needCar: true },
-        { text: 'Hold position while Mina loops the feeds', type: 'hold', seconds: 60, target: { x: 60, z: 60 }, radius: 10 }
-      ],
-      rewardCash: 6500, rewardRP: 260
-    },
-    {
-      num: 7, title: 'Payback at the Docks', giver: 'Tito Rivas', giverRole: 'Crew muscle',
-      briefing: 'The crew that set Ria up is moving a shipment at the docks. Take their cars out and walk away.',
-      dialogue: [
-        { who: 'Tito Rivas', line: 'Three of their cars, Ria. You do not have to be gentle.' },
-        { who: 'Ria Solano', line: 'Finally a job that speaks my language.' },
-        { who: 'Tito Rivas', line: 'I will be right behind you. Try not to get us both killed.' }
-      ],
-      stages: [
-        { text: 'Reach the docks', type: 'reach', target: { x: 128, z: -52 }, radius: 9 },
-        { text: 'Wreck 3 rival cars', type: 'wreck', count: 3, target: { x: 128, z: -52 }, radius: 16 }
-      ],
-      rewardCash: 8000, rewardRP: 300
-    },
-    {
-      num: 8, title: 'The Debt Paid', giver: 'Don Rafael Alba', giverRole: 'The Don',
-      briefing: 'One last run for the Don himself: deliver his car to the island at golden hour and the debt is cleared.',
-      dialogue: [
-        { who: 'Don Rafael Alba', line: 'You have driven well, Ria Solano. One last run and we are square.' },
-        { who: 'Ria Solano', line: 'The island. Golden hour. No cops?' },
-        { who: 'Don Rafael Alba', line: 'There will be cops. That is why I asked for you.' }
-      ],
-      stages: [
-        { text: 'Take the Don\'s car from the garage', type: 'steal', carModel: 'Night Runner' },
-        { text: 'Deliver it to the island at golden hour', type: 'reach', target: { x: 0, z: 252 }, radius: 10, needCar: true },
-        { text: 'Lose the heat — get wanted to 0', type: 'escape' }
-      ],
-      rewardCash: 15000, rewardRP: 500
-    }
-  ];
+import { Car } from './vehicle.js';
 
-  var RANKS = [
-    { rp: 0, name: 'Wheelman' },
-    { rp: 200, name: 'Getaway Driver' },
-    { rp: 500, name: 'Street Legend' },
-    { rp: 900, name: 'Ghost of Alba' },
-    { rp: 1400, name: 'Queen of the Causeway' }
-  ];
+export const RANKS = [
+  { name: 'Wheelman', rp: 0 },
+  { name: 'Street Hustler', rp: 250 },
+  { name: 'Fixer', rp: 550 },
+  { name: 'Ghost of Alba', rp: 900 },
+  { name: 'King of Alba', rp: 1400 }
+];
 
-  function rankFor(rp) {
-    var r = RANKS[0];
-    for (var i = 0; i < RANKS.length; i++) if (rp >= RANKS[i].rp) r = RANKS[i];
-    return r.name;
+export function rankFor(rp) {
+  let r = RANKS[0];
+  for (const k of RANKS) if (rp >= k.rp) r = k;
+  const next = RANKS[RANKS.indexOf(r) + 1];
+  return { rank: r, next };
+}
+
+export const JOBS = [
+  {
+    id: 'M1', name: 'Hot Wheels', giver: 'Kiki Maro', role: 'Wheelwoman', district: 'Marina Row',
+    type: 'story', reward: 2500, rp: 120, unlock: null,
+    dialogue: [
+      'Kiki: Ria. That Comet GT on Marina Row? It has our name on it.',
+      'Kiki: Lift it clean, no sirens, and bring it to the garage.',
+      'Ria: One clean lift. Then the Don gets one less reason to call.'
+    ],
+    stages: [
+      { type: 'steal', x: -160, z: 80, radius: 6, text: 'Steal the Comet GT' },
+      { type: 'reach', x: -150, z: 136, radius: 16, text: 'Deliver it to Alba Garage' }
+    ]
+  },
+  {
+    id: 'M2', name: 'The Drop', giver: 'Lena Kade', role: 'Fixer', district: 'Marina Row',
+    type: 'story', reward: 3000, rp: 150, unlock: null,
+    dialogue: [
+      'Lena: A package for the pier. No questions, no peeking.',
+      'Lena: Wait at the marker until my buyer shows. Five seconds of patience.',
+      'Ria: Patience I have. Curiosity I left at the docks.'
+    ],
+    stages: [
+      { type: 'reach', x: -240, z: 180, radius: 12, text: 'Reach the pier' },
+      { type: 'hold', x: -240, z: 180, radius: 12, seconds: 5, text: 'Hold the drop point' }
+    ]
+  },
+  {
+    id: 'M3', name: 'Causeway Run', giver: 'Dario Voss', role: 'Wheelman', district: 'Causeway',
+    type: 'story', reward: 4500, rp: 200, unlock: 'M3',
+    dialogue: [
+      'Dario: The causeway at golden hour. Fastest line in Alba.',
+      'Dario: Run it end to end, then hold the island club till I call.',
+      'Ria: If the cops follow, they can admire the view too.'
+    ],
+    stages: [
+      { type: 'reach', x: 0, z: 320, radius: 14, text: 'Hit the causeway' },
+      { type: 'reach', x: 0, z: 470, radius: 14, text: 'Cross to the island' },
+      { type: 'hold', x: 0, z: 470, radius: 14, seconds: 8, text: 'Hold the club entrance' }
+    ]
+  },
+  {
+    id: 'M4', name: 'Marina Lights', giver: 'Sable Quinn', role: 'Marina Owner', district: 'Marina Row',
+    type: 'story', reward: 5000, rp: 220, unlock: null,
+    dialogue: [
+      'Sable: A rival hauler parks on my marina like he owns it.',
+      'Sable: Wreck it. Leave it where the tide can see it.',
+      'Ria: Consider it a new reef.'
+    ],
+    stages: [
+      { type: 'wreck', x: -160, z: 80, radius: 10, text: 'Wreck the rival hauler' }
+    ]
+  },
+  {
+    id: 'M5', name: 'Commerce Row Heat', giver: 'Marco Venn', role: 'Fixer', district: 'Commerce Row',
+    type: 'story', reward: 6000, rp: 260, unlock: 'M5',
+    dialogue: [
+      'Marco: Venn\'s boys torched my delivery van. Debts get paid in dents.',
+      'Marco: Total their coupe on Commerce Row, then vanish.',
+      'Ria: Vanishing is my favorite part.'
+    ],
+    stages: [
+      { type: 'wreck', x: 80, z: -80, radius: 10, text: 'Wreck the rival coupe' },
+      { type: 'escape', x: 0, z: 0, radius: 0, text: 'Lose the cops' }
+    ]
+  },
+  {
+    id: 'M6', name: 'Island Lights', giver: 'Iris Vale', role: 'Club Owner', district: 'The Island',
+    type: 'story', reward: 6500, rp: 280, unlock: null,
+    dialogue: [
+      'Iris: My club opens tonight and the Don\'s men want a cut of the door.',
+      'Iris: Show up, hold the floor, then bring the night to the casino.',
+      'Ria: I will be the best-dressed problem they have tonight.'
+    ],
+    stages: [
+      { type: 'reach', x: 0, z: 470, radius: 14, text: 'Reach the island club' },
+      { type: 'hold', x: 0, z: 470, radius: 14, seconds: 10, text: 'Hold the club floor' },
+      { type: 'reach', x: 190, z: 228, radius: 16, text: 'Reach Casino Luna' }
+    ]
+  },
+  {
+    id: 'M7', name: 'Payback at the Docks', giver: 'Don Rafael Alba', role: 'Don of Alba', district: 'Marina Row',
+    type: 'story', reward: 10000, rp: 400, unlock: 'M7',
+    dialogue: [
+      'Don Alba: Forty thousand you owe me, Ria. Tonight you start paying it back.',
+      'Don Alba: A rival convoy docks at midnight. Wreck their lead car.',
+      'Ria: One car. Then we talk about the other thirty-nine thousand.'
+    ],
+    stages: [
+      { type: 'wreck', x: -240, z: -160, radius: 10, text: 'Wreck the convoy lead car' },
+      { type: 'reach', x: -150, z: 136, radius: 16, text: 'Escape to Alba Garage' }
+    ]
+  },
+  {
+    id: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba', district: 'The Strand',
+    type: 'story', reward: 15000, rp: 500, unlock: null,
+    dialogue: [
+      'Don Alba: The last of it, Ria. Forty thousand, in one bag, on the Strand.',
+      'Don Alba: Every cruiser in Alba will be looking for you. Make them work for it.',
+      'Ria: When this bag lands, I drive for me. Nobody else.'
+    ],
+    stages: [
+      { type: 'reach', x: -240, z: 200, radius: 12, text: 'Deliver the bag on the Strand' },
+      { type: 'escape', x: 0, z: 0, radius: 0, text: 'Lose the 5-star heat' }
+    ]
+  },
+  {
+    id: 'M9', name: 'Strand Grand Prix', giver: 'Rex Calder', role: 'Race Promoter', district: 'The Strand',
+    type: 'race', raceId: 'strand-gp', reward: 4000, rp: 200, unlock: null,
+    dialogue: [
+      'Rex: Seven gates, three rivals, one beachfront. Winner takes four grand.',
+      'Rex: Beat my best time and I will put your name on the board.',
+      'Ria: Put it in gold. I like gold.'
+    ],
+    stages: [
+      { type: 'race', raceId: 'strand-gp', x: -220, z: 205, radius: 14, text: 'Win the Strand Grand Prix' }
+    ]
+  },
+  {
+    id: 'M10', name: 'Tune-Up for Alba', giver: 'Gus Ferran', role: 'Garage Mechanic', district: 'Marina Row',
+    type: 'garage', reward: 3000, rp: 180, unlock: null,
+    dialogue: [
+      'Gus: The garage is real now, Ria. Bring me a car worth tuning.',
+      'Gus: Buy any upgrade off my wall and I will fit it myself.',
+      'Ria: One Comet GT, one upgrade. Try to keep up, Gus.'
+    ],
+    stages: [
+      { type: 'steal', x: -160, z: 160, radius: 6, text: 'Steal a car for the garage' },
+      { type: 'reach', x: -150, z: 136, radius: 16, text: 'Bring it to Alba Garage' },
+      { type: 'buy', x: -150, z: 136, radius: 16, text: 'Buy any garage upgrade' }
+    ]
+  },
+  {
+    id: 'M11', name: 'The Luna Vault', giver: 'Sable Quinn', role: 'Marina Owner', district: 'The Strand',
+    type: 'heist', reward: 12000, rp: 450, unlock: 'M11',
+    dialogue: [
+      'Sable: Casino Luna keeps its vault behind twelve seconds of nerve.',
+      'Sable: Stand at the doors, crack it, and do not stop for the lights.',
+      'Ria: Twelve seconds. I have held my breath longer.'
+    ],
+    stages: [
+      { type: 'reach', x: 190, z: 228, radius: 16, text: 'Reach Casino Luna' },
+      { type: 'hold', x: 190, z: 228, radius: 16, seconds: 12, text: 'Crack the vault' },
+      { type: 'escape', x: 0, z: 0, radius: 0, text: 'Lose the cops' }
+    ]
+  },
+  {
+    id: 'M12', name: "Alba's Last Call", giver: 'Don Rafael Alba', role: 'Don of Alba', district: 'The Island',
+    type: 'finale', reward: 15000, rp: 500, unlock: null,
+    dialogue: [
+      'Don Alba: One last job, Ria. The island, the whole heat, and a clean exit.',
+      'Don Alba: Bring the ledger to the clubhouse and the debt is dust.',
+      'Ria: Last call, Don. After tonight, Alba drives itself.'
+    ],
+    stages: [
+      { type: 'reach', x: 0, z: 470, radius: 14, text: 'Reach the island clubhouse' },
+      { type: 'escape', x: 0, z: 0, radius: 0, text: 'Lose the 5-star heat' }
+    ]
   }
+];
 
-  function nextRankAt(rp) {
-    for (var i = 0; i < RANKS.length; i++) if (rp < RANKS[i].rp) return RANKS[i].rp;
-    return null;
-  }
-
-  function MissionRunner(scene, state) {
+export class Missions {
+  constructor(THREE, scene) {
+    this.THREE = THREE;
     this.scene = scene;
-    this.state = state;
-    this.active = null;
-    this.stageIndex = 0;
-    this.stageT = 0;
-    this.holdT = 0;
-    this.wrecked = 0;
-    this.marker = null;
-    this.markerRing = null;
-    this.finished = false;
-    this.failed = false;
-    this.failReason = '';
-    this.elapsed = 0;
-    this._makeMarker();
+    this.jobs = JOBS.map(j => Object.assign({}, j, { done: false }));
+    this.active = null; // {job, stageIndex, holdT, stageCar, raceStarted}
+    this.completed = [];
   }
 
-  MissionRunner.prototype._makeMarker = function () {
-    var mat = new THREE.MeshBasicMaterial({ color: 0xf5c542, transparent: true, opacity: 0.55 });
-    this.marker = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.35, 24), mat);
-    this.marker.position.y = 0.25;
-    this.marker.visible = false;
-    this.scene.add(this.marker);
-    var beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.4, 1.4, 26, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xf5c542, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })
-    );
-    beam.position.y = 13;
-    this.marker.add(beam);
-    this.markerRing = new THREE.Mesh(
-      new THREE.RingGeometry(3.2, 3.8, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
-    );
-    this.markerRing.rotation.x = -Math.PI / 2;
-    this.markerRing.position.y = 0.3;
-    this.markerRing.visible = false;
-    this.scene.add(this.markerRing);
-  };
+  job(id) { return this.jobs.find(j => j.id === id); }
+  isDone(id) { return this.completed.includes(id); }
 
-  MissionRunner.prototype.mission = function () {
+  start(id, force) {
+    const job = this.job(id);
+    if (!job || this.isDone(id)) return null;
+    if (this.active) this.abandon();
+    this.active = { job, stageIndex: 0, holdT: 0, stageCar: null, raceStarted: false };
+    this.prepareStage();
     return this.active;
-  };
+  }
 
-  MissionRunner.prototype.stage = function () {
+  prepareStage() {
+    const a = this.active;
+    if (!a) return;
+    const st = a.job.stages[a.stageIndex];
+    if (!st) return;
+    a.holdT = 0;
+    if (a.stageCar) { a.stageCar.dispose(); a.stageCar = null; }
+    if (st.type === 'wreck' || st.type === 'steal') {
+      const isWreck = st.type === 'wreck';
+      a.stageCar = new Car(this.THREE, this.scene, {
+        x: st.x, z: st.z,
+        color: isWreck ? 0x8a1a1a : 0x2ad8c8,
+        name: isWreck ? 'Rival Hauler' : 'Comet GT',
+        topSpeed: 20, health: isWreck ? 100 : 100
+      });
+      a.stageCar.heading = Math.PI / 2;
+      a.stageCar.mesh.rotation.y = a.stageCar.heading;
+    }
+  }
+
+  stage() {
     if (!this.active) return null;
-    return this.active.stages[this.stageIndex] || null;
-  };
-
-  MissionRunner.prototype.start = function (index) {
-    if (index < 0 || index >= MISSIONS.length) return false;
-    this.active = MISSIONS[index];
-    this.stageIndex = 0;
-    this.stageT = 0;
-    this.holdT = 0;
-    this.wrecked = 0;
-    this.elapsed = 0;
-    this.finished = false;
-    this.failed = false;
-    this.state.missionIndex = index;
-    if (PA.hud) {
-      PA.hud.showDialogue(this.active.giver, this.active.dialogue[0].line);
-      PA.hud.banner('M' + this.active.num + ' — ' + this.active.title, this.active.briefing);
+    return this.active.job.stages[this.active.stageIndex] || null;
+  }
+  stageTarget() {
+    const st = this.stage();
+    if (!st) return null;
+    if (st.type === 'escape') {
+      // Escape stages route to Alba Garage.
+      return { x: -150, z: 136, text: 'Escape to Alba Garage', type: 'escape' };
     }
-    if (PA.audio) PA.audio.sting();
-    this._placeMarker();
-    return true;
-  };
+    return { x: st.x, z: st.z, text: st.text, type: st.type };
+  }
 
-  MissionRunner.prototype._placeMarker = function () {
-    var s = this.stage();
-    if (s && s.target) {
-      this.marker.position.set(s.target.x, 0.25, s.target.z);
-      this.marker.visible = true;
-      this.markerRing.position.set(s.target.x, 0.3, s.target.z);
-      this.markerRing.visible = true;
-    } else {
-      this.marker.visible = false;
-      this.markerRing.visible = false;
-    }
-  };
-
-  MissionRunner.prototype.objectiveText = function () {
-    if (!this.active) return 'Free roam — press J to start the next job';
-    var s = this.stage();
-    if (!s) return this.active.title + ' — done';
-    var extra = '';
-    if (s.type === 'hold') extra = '  (' + Math.ceil(s.seconds - this.holdT) + 's left)';
-    if (s.type === 'wreck') extra = '  (' + this.wrecked + '/' + s.count + ')';
-    return 'M' + this.active.num + ' ' + this.active.title + ' — ' + s.text + extra;
-  };
-
-  MissionRunner.prototype.progress01 = function () {
-    if (!this.active) return 0;
-    return (this.stageIndex + this._stageProgress()) / this.active.stages.length;
-  };
-
-  MissionRunner.prototype._stageProgress = function () {
-    var s = this.stage();
-    if (!s) return 1;
-    if (s.type === 'hold') return U.clamp(this.holdT / s.seconds, 0, 1);
-    if (s.type === 'wreck') return U.clamp(this.wrecked / s.count, 0, 1);
-    return 0;
-  };
-
-  MissionRunner.prototype.advance = function () {
-    this.stageIndex++;
-    this.stageT = 0;
-    this.holdT = 0;
-    if (PA.audio) PA.audio.good();
-    if (this.stageIndex >= this.active.stages.length) {
-      this.completeMission();
-    } else {
-      var s = this.stage();
-      if (PA.hud) PA.hud.toast('Stage complete — ' + s.text);
-      this._placeMarker();
-    }
-  };
-
-  MissionRunner.prototype.completeMission = function () {
-    var m = this.active;
-    this.state.cash += m.rewardCash;
-    this.state.respect += m.rewardRP;
-    this.state.rank = rankFor(this.state.respect);
-    if (this.state.completed.indexOf(m.num) < 0) this.state.completed.push(m.num);
-    this.state.missionIndex = Math.min(m.num, MISSIONS.length - 1);
-    this.finished = true;
-    this.marker.visible = false;
-    this.markerRing.visible = false;
-    var unlocked = [];
-    if (PA.combatInstance) unlocked = PA.combatInstance.unlockForMission(m.num);
-    if (PA.hud) {
-      PA.hud.banner('JOB COMPLETE — ' + m.title, '+' + U.fmtCash(m.rewardCash) + '  +' + m.rewardRP + ' RP  ' + (unlocked.length ? 'UNLOCKED: ' + unlocked.join(', ') : ''));
-      PA.hud.showDialogue(m.giver, 'Job done. The Don will hear about this.');
-    }
-    if (PA.audio) { PA.audio.cashSound(); PA.audio.sting(); }
-    if (PA.save) PA.save.save(this.state);
-    this.active = null;
-    this.stageIndex = 0;
-  };
-
-  MissionRunner.prototype.fail = function (reason) {
-    this.failed = true;
-    this.failReason = reason;
-    this.marker.visible = false;
-    this.markerRing.visible = false;
-    if (PA.hud) PA.hud.banner('JOB FAILED', reason + ' — press J to retry');
-    if (PA.audio) PA.audio.bad();
-    this.active = null;
-    this.stageIndex = 0;
-  };
-
-  MissionRunner.prototype.update = function (dt, ctx) {
-    this.elapsed += dt;
-    if (this.marker.visible) {
-      var t = performance.now() / 1000;
-      this.marker.rotation.y = t * 0.8;
-      var s = 1 + Math.sin(t * 3) * 0.12;
-      this.marker.scale.set(s, 1, s);
-    }
-    if (!this.active) return;
-    var stage = this.stage();
-    if (!stage) return;
-    this.stageT += dt;
-    var player = ctx.player;
-    var pos = player.position();
-    var police = ctx.police;
-    if (stage.type === 'reach') {
-      var d = U.dist2(pos.x, pos.z, stage.target.x, stage.target.z);
-      if (d < stage.radius) {
-        if (stage.needCar && !player.car) {
-          if (PA.hud && this.stageT > 2) PA.hud.toast('You need a car for this stage');
-        } else {
-          this.advance();
-        }
-      }
-    } else if (stage.type === 'steal') {
-      if (player.car && player.car.name === stage.carModel) {
-        if (PA.hud) PA.hud.toast('Car stolen — ' + stage.carModel);
-        this.advance();
-      }
-    } else if (stage.type === 'hold') {
-      var hd = U.dist2(pos.x, pos.z, stage.target.x, stage.target.z);
-      if (hd < stage.radius) {
-        this.holdT += dt;
-        if (this.holdT >= stage.seconds) this.advance();
+  // ctx: {px, pz, inCar, wanted, raceResult, garage, enteredCar}
+  // Returns events: [{type:'stage'|'complete'|'race-lost'|'buy', ...}]
+  update(dt, ctx) {
+    const events = [];
+    const a = this.active;
+    if (!a) return events;
+    const st = a.job.stages[a.stageIndex];
+    if (!st) return events;
+    const d = Math.hypot(ctx.px - (st.x || 0), ctx.pz - (st.z || 0));
+    const advance = () => {
+      a.stageIndex += 1;
+      events.push({ type: 'stage', job: a.job, stageIndex: a.stageIndex });
+      if (a.stageIndex >= a.job.stages.length) {
+        const reward = { cash: a.job.reward, rp: a.job.rp, unlock: a.job.unlock, job: a.job };
+        this.completed.push(a.job.id);
+        this.active = null;
+        events.push({ type: 'complete', reward });
       } else {
-        this.holdT = Math.max(0, this.holdT - dt * 0.5);
+        this.prepareStage();
       }
-    } else if (stage.type === 'escape') {
-      if (police && police.wanted <= 0) this.advance();
-    } else if (stage.type === 'wreck') {
-      var wd = U.dist2(pos.x, pos.z, stage.target.x, stage.target.z);
-      if (wd < stage.radius + 10 && ctx.rivalWrecks !== undefined && ctx.rivalWrecks > this.wrecked) {
-        this.wrecked = ctx.rivalWrecks;
-        if (PA.hud) PA.hud.toast('Rival car wrecked! (' + this.wrecked + '/' + stage.count + ')');
-        if (this.wrecked >= stage.count) this.advance();
+    };
+    switch (st.type) {
+      case 'steal':
+        if (ctx.inCar || (a.stageCar && ctx.enteredCar === a.stageCar)) advance();
+        break;
+      case 'reach':
+        if (d < (st.radius || 12)) advance();
+        break;
+      case 'hold':
+        if (d < (st.radius || 12)) {
+          a.holdT += dt;
+          if (a.holdT >= (st.seconds || 5)) advance();
+        } else {
+          a.holdT = Math.max(0, a.holdT - dt);
+        }
+        break;
+      case 'escape':
+        if (ctx.wanted === 0) advance();
+        break;
+      case 'wreck':
+        if (a.stageCar && a.stageCar.health <= 0) advance();
+        break;
+      case 'race': {
+        if (!a.raceStarted) {
+          a.raceStarted = true;
+          events.push({ type: 'race-start', raceId: st.raceId });
+        }
+        if (ctx.raceResult) {
+          if (ctx.raceResult.won) advance();
+          else events.push({ type: 'race-lost', raceId: st.raceId });
+        }
+        break;
       }
+      case 'buy':
+        if (ctx.garage && (ctx.garage.has('armor') || ctx.garage.has('engine') || ctx.garage.has('nitro'))) advance();
+        break;
+      default:
+        break;
     }
-    // Failing: player dead.
-    if (player.dead) this.fail('Ria is down');
-  };
+    return events;
+  }
 
-  window.PA = window.PA || {};
-  PA.missions = { MISSIONS: MISSIONS, MissionRunner: MissionRunner, rankFor: rankFor, nextRankAt: nextRankAt, RANKS: RANKS };
-})();
+  holdProgress() {
+    const a = this.active;
+    if (!a) return 0;
+    const st = a.job.stages[a.stageIndex];
+    if (!st || st.type !== 'hold') return 0;
+    return Math.min(1, a.holdT / (st.seconds || 5));
+  }
+
+  abandon() {
+    if (!this.active) return;
+    if (this.active.stageCar) this.active.stageCar.dispose();
+    this.active = null;
+  }
+
+  serialize() { return this.completed.slice(); }
+  restore(doneList) {
+    if (!doneList) return;
+    for (const id of doneList) {
+      if (this.job(id)) this.completed.push(id);
+    }
+  }
+}

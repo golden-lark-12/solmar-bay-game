@@ -1,106 +1,78 @@
-// Puerto Alba — input.js
-// Keyboard + mouse state with edge-triggered "pressed" events.
-(function () {
-  'use strict';
+// input.js — keyboard + mouse state with edge detection.
+// Keys: WASD/arrows drive & walk, E steal/enter car, Shift nitro, Tab weapon wheel
+// (hold), F cycle weapon, 1-6 pick weapon, Z/X/C crew abilities, G garage,
+// M start mission, P/Esc pause, Enter confirm. Puerto Alba.
 
-  var keys = {};
-  var pressed = {};
-  var mouse = { x: 0, y: 0, down: false, clicked: false, dragDX: 0, dragDY: 0 };
-  var lastX = 0, lastY = 0, dragging = false;
-  var anyKey = false;
-
-  function onKeyDown(e) {
-    if (e.repeat) return;
-    keys[e.code] = true;
-    pressed[e.code] = true;
-    anyKey = true;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].indexOf(e.code) >= 0) {
-      e.preventDefault();
-    }
+export class Input {
+  constructor() {
+    this.downKeys = new Set();
+    this.pressedKeys = new Set();
+    this.mouseDown = false;
+    this.mousePressed = false;
+    this.mouseX = 0;
+    this.mouseY = 0;
+    this._onKeyDown = (e) => {
+      if (e.code === 'Tab') e.preventDefault();
+      if (!e.repeat) this.pressedKeys.add(e.code);
+      this.downKeys.add(e.code);
+    };
+    this._onKeyUp = (e) => { this.downKeys.delete(e.code); };
+    this._onMouseDown = (e) => {
+      this.mouseDown = true; this.mousePressed = true;
+      this.mouseX = e.clientX; this.mouseY = e.clientY;
+    };
+    this._onMouseUp = () => { this.mouseDown = false; };
+    this._onBlur = () => { this.downKeys.clear(); this.mouseDown = false; };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('blur', this._onBlur);
   }
 
-  function onKeyUp(e) {
-    keys[e.code] = false;
+  down(code) { return this.downKeys.has(code); }
+  pressed(code) { return this.pressedKeys.has(code); }
+  clickPressed() { return this.mousePressed; }
+
+  // Driving axes, -1..1.
+  get throttle() {
+    let t = 0;
+    if (this.down('KeyW') || this.down('ArrowUp')) t += 1;
+    if (this.down('KeyS') || this.down('ArrowDown')) t -= 1;
+    return t;
+  }
+  get steer() {
+    let s = 0;
+    if (this.down('KeyA') || this.down('ArrowLeft')) s += 1;
+    if (this.down('KeyD') || this.down('ArrowRight')) s -= 1;
+    return s;
+  }
+  get walkX() {
+    let x = 0;
+    if (this.down('KeyD') || this.down('ArrowRight')) x += 1;
+    if (this.down('KeyA') || this.down('ArrowLeft')) x -= 1;
+    return x;
+  }
+  get walkY() {
+    let y = 0;
+    if (this.down('KeyW') || this.down('ArrowUp')) y += 1;
+    if (this.down('KeyS') || this.down('ArrowDown')) y -= 1;
+    return y;
+  }
+  get nitro() { return this.down('ShiftLeft') || this.down('ShiftRight'); }
+  get sprint() { return this.down('ShiftLeft') || this.down('ShiftRight'); }
+
+  // Called at the end of each frame: clear edge-triggered state.
+  endFrame() {
+    this.pressedKeys.clear();
+    this.mousePressed = false;
   }
 
-  function init(canvas) {
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', function () {
-      for (var k in keys) keys[k] = false;
-    });
-    if (canvas) {
-      canvas.addEventListener('mousedown', function (e) {
-        mouse.down = true;
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-      });
-      window.addEventListener('mouseup', function (e) {
-        mouse.down = false;
-        dragging = false;
-        mouse.clicked = true;
-        mouse.x = e.clientX;
-        mouse.y = e.clientY;
-      });
-      window.addEventListener('mousemove', function (e) {
-        mouse.x = e.clientX;
-        mouse.y = e.clientY;
-        if (dragging) {
-          mouse.dragDX += e.clientX - lastX;
-          mouse.dragDY += e.clientY - lastY;
-          lastX = e.clientX;
-          lastY = e.clientY;
-        }
-      });
-      canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    }
+  dispose() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mouseup', this._onMouseUp);
+    window.removeEventListener('blur', this._onBlur);
   }
-
-  function isDown(code) { return !!keys[code]; }
-
-  function wasPressed(code) {
-    if (pressed[code]) {
-      pressed[code] = false;
-      return true;
-    }
-    return false;
-  }
-
-  function consumeClick() {
-    var c = mouse.clicked;
-    mouse.clicked = false;
-    return c;
-  }
-
-  function consumeDrag() {
-    var dx = mouse.dragDX, dy = mouse.dragDY;
-    mouse.dragDX = 0;
-    mouse.dragDY = 0;
-    return { dx: dx, dy: dy };
-  }
-
-  // Movement axes: x = strafe/right, y = forward. WASD + arrows.
-  function axes() {
-    var x = 0, y = 0;
-    if (isDown('KeyA') || isDown('ArrowLeft')) x -= 1;
-    if (isDown('KeyD') || isDown('ArrowRight')) x += 1;
-    if (isDown('KeyW') || isDown('ArrowUp')) y += 1;
-    if (isDown('KeyS') || isDown('ArrowDown')) y -= 1;
-    return { x: x, y: y };
-  }
-
-  function endFrame() {
-    pressed = {};
-    mouse.clicked = false;
-  }
-
-  function hadAnyKey() { return anyKey; }
-
-  window.PA = window.PA || {};
-  PA.input = {
-    init: init, isDown: isDown, wasPressed: wasPressed,
-    consumeClick: consumeClick, consumeDrag: consumeDrag,
-    axes: axes, endFrame: endFrame, hadAnyKey: hadAnyKey, mouse: mouse
-  };
-})();
+}

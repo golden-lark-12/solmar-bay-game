@@ -1,335 +1,328 @@
-// Puerto Alba — hud.js
-// The dense HUD: wanted stars, cash, health, respect, dispatch panel,
-// minimap with route line, weapon slots, dialogue, crew, mission banner.
-(function () {
-  'use strict';
-  var U = PA.utils;
+// hud.js — the whole HUD as DOM: stars, cash, rank + RP, district + standing,
+// mission banner, IN SIGHT banner, dispatch panel with colored badges, minimap,
+// big speedo + car name + condition, nitro bar, weapon slots, crew portraits,
+// radio with song title, dialogue, hints, weapon wheel, garage shop, toasts.
+// Puerto Alba.
 
-  var refs = {};
-  var weaponSlots = [];
-  var dialogueTimer = 0;
-  var bannerTimer = 0;
-  var toastTimer = 0;
-  var crew = [
-    { key: 'Z', name: 'Jax', role: 'Getaway driver', ability: 'Slipstream — +speed 10s', cd: 0, cdMax: 45 },
-    { key: 'X', name: 'Mina', role: 'Hacker', ability: 'Loop Feeds — minus 1 star', cd: 0, cdMax: 90 },
-    { key: 'C', name: 'Tito', role: 'Muscle', ability: 'Ram — wreck nearest rival', cd: 0, cdMax: 60 }
-  ];
-  var onCrewUse = null;
+import { el, fmtCash, fmtClock } from './utils.js';
 
-  function $(id) { return document.getElementById(id); }
+const STAR = '★';
 
-  function init() {
-    refs.wanted = $('wanted-stars');
-    refs.cash = $('cash');
-    refs.healthFill = $('health-fill');
-    refs.armorFill = $('armor-fill');
-    refs.rankName = $('rank-name');
-    refs.respectLine = $('respect-line');
-    refs.rpFill = $('rp-fill');
-    refs.dispatchList = $('dispatch-list');
-    refs.radio = $('radio-line');
-    refs.clock = $('clock-line');
-    refs.weather = $('weather-line');
-    refs.missionTitle = $('mission-title');
-    refs.missionSub = $('mission-sub');
-    refs.missionBanner = $('mission-banner');
-    refs.missionTimer = $('mission-timer');
-    refs.stageBars = $('stage-bars');
-    refs.crewPanel = $('crew-panel');
-    refs.minimap = $('minimap');
-    refs.speedo = $('speedo');
-    refs.carCond = $('car-cond');
-    refs.weaponSlots = $('weapon-slots');
-    refs.dialogue = $('dialogue-box');
-    refs.dialogueName = $('dialogue-name');
-    refs.dialogueLine = $('dialogue-line');
-    refs.objective = $('objective-line');
-    refs.toast = $('toast');
-    refs.hint = $('hint-line');
-    refs.crosshair = $('crosshair');
-    buildWeaponSlots();
-    buildStageBars();
-    buildCrewPanel();
+export class Hud {
+  constructor() {
+    this.root = document.getElementById('hud');
+    this.build();
+    this._cache = {};
   }
 
-  function buildWeaponSlots() {
-    if (!refs.weaponSlots) return;
-    refs.weaponSlots.innerHTML = '';
-    weaponSlots = [];
-    PA.combat.WEAPONS.forEach(function (w, i) {
-      var slot = U.el('div', 'wslot', refs.weaponSlots);
-      var num = U.el('div', 'wslot-num', slot, (i + 1) + '');
-      var name = U.el('div', 'wslot-name', slot, w.name);
-      var ammo = U.el('div', 'wslot-ammo', slot, '');
-      var lock = U.el('div', 'wslot-lock', slot, '');
-      weaponSlots.push({ root: slot, name: name, ammo: ammo, lock: lock });
-    });
+  build() {
+    // Top-left: wanted stars, cash, rank, district.
+    const tl = el('div', 'hud-tl', null, this.root);
+    this.starsEl = el('div', 'hud-stars', '☆☆☆☆☆', tl);
+    this.cashEl = el('div', 'hud-cash', '$1,200', tl);
+    this.rankEl = el('div', 'hud-rank', 'Wheelman', tl);
+    this.rpBar = el('div', 'hud-rpbar', null, tl);
+    this.rpFill = el('div', 'hud-rpfill', null, this.rpBar);
+    this.rpText = el('div', 'hud-rptext', '0 RP', tl);
+    this.districtEl = el('div', 'hud-district', 'Commerce Row', tl);
+    this.standBar = el('div', 'hud-rpbar', null, tl);
+    this.standFill = el('div', 'hud-rpfill stand', null, this.standBar);
+    this.standText = el('div', 'hud-rptext', 'Standing 0', tl);
+
+    // Top-center: mission banner + IN SIGHT.
+    const tc = el('div', 'hud-tc', null, this.root);
+    this.missionEl = el('div', 'hud-mission', null, tc);
+    this.missionTitle = el('div', 'hud-mission-title', '', this.missionEl);
+    this.missionGiver = el('div', 'hud-mission-giver', '', this.missionEl);
+    this.missionStage = el('div', 'hud-mission-stage', '', this.missionEl);
+    this.missionTimer = el('div', 'hud-mission-timer', '', this.missionEl);
+    this.missionBar = el('div', 'hud-rpbar mission', null, this.missionEl);
+    this.missionFill = el('div', 'hud-rpfill', null, this.missionBar);
+    this.insightEl = el('div', 'hud-insight', 'IN SIGHT', tc);
+    this.insightEl.style.display = 'none';
+
+    // Top-right: minimap, dispatch, clock.
+    const tr = el('div', 'hud-tr', null, this.root);
+    this.mapCanvas = document.createElement('canvas');
+    this.mapCanvas.width = 200; this.mapCanvas.height = 200;
+    this.mapCanvas.className = 'hud-minimap';
+    tr.appendChild(this.mapCanvas);
+    this.mapCtx = this.mapCanvas.getContext('2d');
+    this.clockEl = el('div', 'hud-clock', '6:00 PM · Golden Hour', tr);
+    this.dispatchEl = el('div', 'hud-dispatch', null, tr);
+    this.dispatchTitle = el('div', 'hud-dispatch-title', 'DISPATCH', this.dispatchEl);
+    this.dispatchList = el('div', 'hud-dispatch-list', null, this.dispatchEl);
+    this.dispatchEmpty = el('div', 'hud-dispatch-empty', 'No active units — streets are quiet', this.dispatchEl);
+
+    // Bottom-left: crew + radio.
+    const bl = el('div', 'hud-bl', null, this.root);
+    this.crewEl = el('div', 'hud-crew', null, bl);
+    this.crewSlots = [];
+    for (let i = 0; i < 3; i++) {
+      const slot = el('div', 'hud-crew-slot', null, this.crewEl);
+      const av = el('div', 'hud-crew-avatar', '??', slot);
+      const nm = el('div', 'hud-crew-name', '', slot);
+      const ab = el('div', 'hud-crew-ability', '', slot);
+      const st = el('div', 'hud-crew-state', 'READY', slot);
+      this.crewSlots.push({ slot, av, nm, ab, st });
+    }
+    this.radioEl = el('div', 'hud-radio', 'ALBA FM 98.1 — Golden Hour Drive', bl);
+
+    // Bottom-center: dialogue + hint.
+    const bc = el('div', 'hud-bc', null, this.root);
+    this.dialogueEl = el('div', 'hud-dialogue', null, bc);
+    this.dialogueName = el('div', 'hud-dialogue-name', '', this.dialogueEl);
+    this.dialogueLine = el('div', 'hud-dialogue-line', '', this.dialogueEl);
+    this.dialogueEl.style.display = 'none';
+    this.hintEl = el('div', 'hud-hint', '', bc);
+
+    // Bottom-right: speedo, nitro, weapons.
+    const br = el('div', 'hud-br', null, this.root);
+    this.speedoEl = el('div', 'hud-speedo', null, br);
+    this.speedNum = el('div', 'hud-speed-num', '0', this.speedoEl);
+    this.speedUnit = el('div', 'hud-speed-unit', 'km/h', this.speedoEl);
+    this.carNameEl = el('div', 'hud-carname', 'On foot', this.speedoEl);
+    this.condBar = el('div', 'hud-rpbar cond', null, this.speedoEl);
+    this.condFill = el('div', 'hud-rpfill cond', null, this.condBar);
+    this.nitroWrap = el('div', 'hud-nitro', null, br);
+    el('div', 'hud-nitro-label', 'NITRO [Shift]', null, this.nitroWrap);
+    this.nitroBar = el('div', 'hud-rpbar nitro', null, this.nitroWrap);
+    this.nitroFill = el('div', 'hud-rpfill nitro', null, this.nitroBar);
+    this.weaponsEl = el('div', 'hud-weapons', null, br);
+    this.weaponSlots = [];
+    for (let i = 0; i < 6; i++) {
+      const slot = el('div', 'hud-weapon', null, this.weaponsEl);
+      const nm = el('div', 'hud-weapon-name', '', slot);
+      const am = el('div', 'hud-weapon-ammo', '', slot);
+      this.weaponSlots.push({ slot, nm, am });
+    }
+
+    // Weapon wheel overlay (hold Tab).
+    this.wheelEl = el('div', 'hud-wheel', null, this.root);
+    this.wheelEl.style.display = 'none';
+    this.wheelTitle = el('div', 'hud-wheel-title', 'WEAPONS — hold Tab, pick 1-6', this.wheelEl);
+    this.wheelSlots = [];
+    for (let i = 0; i < 6; i++) {
+      const s = el('div', 'hud-wheel-slot', null, this.wheelEl);
+      const nm = el('div', 'hud-wheel-name', '', s);
+      const am = el('div', 'hud-wheel-ammo', '', s);
+      this.wheelSlots.push({ s, nm, am });
+    }
+
+    // Garage shop panel.
+    this.shopEl = el('div', 'hud-shop', null, this.root);
+    this.shopEl.style.display = 'none';
+    el('div', 'hud-shop-title', 'ALBA GARAGE — Upgrades', null, this.shopEl);
+    this.shopCash = el('div', 'hud-shop-cash', '', this.shopEl);
+    this.shopList = el('div', 'hud-shop-list', null, this.shopEl);
+    this.shopMsg = el('div', 'hud-shop-msg', '', this.shopEl);
+    const shopClose = el('button', 'hud-shop-close', 'Close [G]', this.shopEl);
+    shopClose.addEventListener('click', () => { if (this.onShopClose) this.onShopClose(); });
+
+    // Toast.
+    this.toastEl = el('div', 'hud-toast', '', this.root);
+    this.toastEl.style.display = 'none';
+    this.toastTimer = 0;
   }
 
-  function buildStageBars() {
-    if (!refs.stageBars) return;
-    refs.stageBars.innerHTML = '';
-    for (var i = 0; i < 3; i++) {
-      var bar = U.el('div', 'stage-bar', refs.stageBars);
-      U.el('div', 'stage-fill', bar);
+  setText(node, key, value) {
+    if (this._cache[key] !== value) {
+      this._cache[key] = value;
+      node.textContent = value;
     }
   }
 
-  function buildCrewPanel() {
-    if (!refs.crewPanel) return;
-    refs.crewPanel.innerHTML = '';
-    crew.forEach(function (c, i) {
-      var row = U.el('div', 'crew-row', refs.crewPanel);
-      U.el('div', 'crew-key', row, '[' + c.key + ']');
-      var mid = U.el('div', 'crew-mid', row);
-      U.el('div', 'crew-name', mid, c.name + ' — ' + c.role);
-      U.el('div', 'crew-ability', mid, c.ability);
-      var cd = U.el('div', 'crew-cd', row, 'READY');
-      c.el = row;
-      c.cdEl = cd;
-    });
-  }
+  update(s, dt) {
+    // Stars.
+    let stars = '';
+    for (let i = 0; i < 5; i++) stars += i < s.wanted ? STAR : '☆';
+    this.setText(this.starsEl, 'stars', stars);
+    this.starsEl.classList.toggle('hot', s.wanted >= 3);
+    this.setText(this.cashEl, 'cash', fmtCash(s.cash));
+    this.setText(this.rankEl, 'rank', s.rankName);
+    this.rpFill.style.width = Math.round(s.rpProgress * 100) + '%';
+    this.setText(this.rpText, 'rp', s.rp + ' RP' + (s.nextRank ? ' · next: ' + s.nextRank : ' · MAX RANK'));
+    this.setText(this.districtEl, 'district', '▸ ' + s.district);
+    this.standFill.style.width = s.standing + '%';
+    this.setText(this.standText, 'standing', 'Standing ' + s.standing + ' / 100');
 
-  function showDialogue(name, line) {
-    if (!refs.dialogue) return;
-    refs.dialogueName.textContent = name;
-    refs.dialogueLine.textContent = '“' + line + '”';
-    refs.dialogue.classList.add('show');
-    dialogueTimer = 7;
-  }
+    // Mission banner.
+    if (s.mission) {
+      this.missionEl.style.display = 'block';
+      this.setText(this.missionTitle, 'mt', s.mission.code + ' — ' + s.mission.name);
+      this.setText(this.missionGiver, 'mg', s.mission.giver + ' · ' + s.mission.role);
+      this.setText(this.missionStage, 'ms', s.stageText || '');
+      this.setText(this.missionTimer, 'mtimer', s.missionTimer || '');
+      this.missionFill.style.width = Math.round((s.stageProgress || 0) * 100) + '%';
+      this.missionBar.style.display = s.stageProgress > 0 ? 'block' : 'none';
+    } else {
+      this.missionEl.style.display = 'none';
+    }
+    this.insightEl.style.display = s.inSight ? 'block' : 'none';
 
-  function hideDialogue() {
-    if (!refs.dialogue) return;
-    refs.dialogue.classList.remove('show');
-  }
-
-  function banner(title, sub) {
-    if (!refs.missionBanner) return;
-    refs.missionTitle.textContent = title;
-    refs.missionSub.textContent = sub || '';
-    refs.missionBanner.classList.add('show');
-    bannerTimer = 6;
-  }
-
-  function toast(msg) {
-    if (!refs.toast) return;
-    refs.toast.textContent = msg;
-    refs.toast.classList.add('show');
-    toastTimer = 3;
-  }
-
-  function useCrew(i) {
-    var c = crew[i];
-    if (!c || c.cd > 0) return false;
-    c.cd = c.cdMax;
-    if (onCrewUse) onCrewUse(i, c);
-    return true;
-  }
-
-  function updateCrew(dt) {
-    for (var i = 0; i < crew.length; i++) {
-      var c = crew[i];
-      if (c.cd > 0) c.cd -= dt;
-      if (c.cdEl) {
-        if (c.cd > 0) {
-          c.cdEl.textContent = Math.ceil(c.cd) + 's';
-          c.cdEl.classList.add('cooling');
-          c.el.classList.add('cooling');
-        } else {
-          c.cdEl.textContent = 'READY';
-          c.cdEl.classList.remove('cooling');
-          c.el.classList.remove('cooling');
+    // Dispatch.
+    if (s.dispatch && s.dispatch.length) {
+      this.dispatchList.style.display = 'block';
+      this.dispatchEmpty.style.display = 'none';
+      const key = s.dispatch.map(u => u.code + u.status + Math.round(u.dist)).join('|');
+      if (this._cache.dispatch !== key) {
+        this._cache.dispatch = key;
+        this.dispatchList.innerHTML = '';
+        for (const u of s.dispatch) {
+          const row = el('div', 'hud-unit', null, this.dispatchList);
+          el('span', 'hud-unit-code', u.code, row);
+          el('span', 'hud-unit-role', u.role, row);
+          const badge = el('span', 'hud-unit-badge', u.status, row);
+          badge.style.background = u.color;
+          el('span', 'hud-unit-dist', Math.round(u.dist) + 'm', row);
         }
       }
+    } else {
+      this.dispatchList.style.display = 'none';
+      this.dispatchEmpty.style.display = 'block';
     }
+    this.setText(this.clockEl, 'clock', s.clockText);
+
+    // Speedo.
+    this.setText(this.speedNum, 'speed', String(s.speedKmh));
+    this.setText(this.carNameEl, 'carname', s.carName || 'On foot');
+    this.condFill.style.width = s.condition + '%';
+    this.condFill.style.background = s.condition > 50 ? '#3ad86a' : (s.condition > 25 ? '#ffb02a' : '#ff3a3a');
+    this.nitroWrap.style.display = s.nitroOwned ? 'block' : 'none';
+    this.nitroFill.style.width = s.nitro + '%';
+    this.nitroFill.classList.toggle('boosting', !!s.nitroActive);
+
+    // Weapons.
+    for (let i = 0; i < 6; i++) {
+      const w = s.weapons[i];
+      const slot = this.weaponSlots[i];
+      slot.slot.classList.toggle('selected', i === s.selectedWeapon);
+      slot.slot.classList.toggle('locked', !w.unlocked);
+      this.setText(slot.nm, 'wn' + i, (i + 1) + ' ' + w.name);
+      this.setText(slot.am, 'wa' + i, w.unlocked ? (w.ammo + ' ammo') : 'LOCKED · ' + (w.unlockJob || ''));
+    }
+
+    // Crew.
+    for (let i = 0; i < 3; i++) {
+      const c = s.crew[i];
+      const slot = this.crewSlots[i];
+      slot.av.style.background = c.color;
+      this.setText(slot.av, 'ca' + i, c.initials);
+      this.setText(slot.nm, 'cn' + i, c.name);
+      this.setText(slot.ab, 'cb' + i, c.ability + ' [' + c.key + ']');
+      this.setText(slot.st, 'cs' + i, c.ready ? 'READY' : Math.ceil(c.cooldown) + 's');
+      slot.st.classList.toggle('ready', c.ready);
+    }
+
+    // Radio + dialogue + hint.
+    this.setText(this.radioEl, 'radio', s.station + ' — ' + s.song);
+    if (s.dialogue) {
+      this.dialogueEl.style.display = 'block';
+      this.setText(this.dialogueName, 'dn', s.dialogue.name + ' · ' + s.dialogue.role);
+      this.setText(this.dialogueLine, 'dl', s.dialogue.line);
+    } else {
+      this.dialogueEl.style.display = 'none';
+    }
+    this.setText(this.hintEl, 'hint', s.hint || '');
+
+    // Toast timer.
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toastEl.style.display = 'none';
+    }
+
+    this.drawMinimap(s.minimap);
   }
 
-  function drawMinimap(world, playerPos, playerHeading, missionTarget, cops, trafficCars, rivalCars) {
-    var cv = refs.minimap;
-    if (!cv) return;
-    var ctx = cv.getContext('2d');
-    var W = cv.width, H = cv.height;
-    var S = W / 420; // world -210..210 -> canvas
-    function toX(x) { return (x + 210) * S; }
-    function toY(z) { return (z + 210) * S; }
+  drawMinimap(m) {
+    if (!m) return;
+    const ctx = this.mapCtx;
+    const W = 200, H = 200;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#1c1a24';
-    ctx.fillRect(0, 0, W, H);
-    // Water + sand.
-    ctx.fillStyle = '#1e6f8e';
-    ctx.fillRect(0, toY(190), W, H - toY(190));
-    ctx.fillStyle = '#e8cf9a';
-    ctx.fillRect(0, toY(150), W, toY(190) - toY(150));
+    // World -> map: x [-300,300] -> [6,194], z [-300,560] -> [194,6].
+    const mx = x => 100 + (x / 320) * 94;
+    const mz = z => 100 - ((z - 130) / 430) * 94;
+    // Sea + beach.
+    ctx.fillStyle = '#123a4a'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#2a6a7a'; ctx.fillRect(0, 0, W, mz(300));
+    ctx.fillStyle = '#e8c878'; ctx.fillRect(0, mz(300), W, mz(235) - mz(300));
+    ctx.fillStyle = '#3a3a44'; ctx.fillRect(0, mz(235), W, H - mz(235));
+    // Island.
+    ctx.fillStyle = '#6a6250';
+    ctx.beginPath(); ctx.arc(mx(0), mz(520), 20, 0, Math.PI * 2); ctx.fill();
     // Roads.
-    ctx.strokeStyle = '#55555e';
-    ctx.lineWidth = 5;
-    PA.city.ROAD_COORDS.forEach(function (c) {
-      ctx.beginPath(); ctx.moveTo(toX(c), 0); ctx.lineTo(toX(c), toY(190)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, toY(c)); ctx.lineTo(W, toY(c)); ctx.stroke();
-    });
-    // Causeway.
-    ctx.strokeStyle = '#8a8578';
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(toX(0), toY(150)); ctx.lineTo(toX(0), toY(262)); ctx.stroke();
+    ctx.strokeStyle = '#8a8a92'; ctx.lineWidth = 2;
+    for (const c of [-240, -160, -80, 0, 80, 160, 240]) {
+      ctx.beginPath(); ctx.moveTo(mx(c), mz(-300)); ctx.lineTo(mx(c), mz(300)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx(-300), mz(c)); ctx.lineTo(mx(300), mz(c)); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(mx(0), mz(300)); ctx.lineTo(mx(0), mz(520)); ctx.stroke();
     // Route line to the mission target.
-    if (missionTarget && playerPos) {
-      ctx.strokeStyle = '#f5c542';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
+    if (m.target) {
+      ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo(toX(playerPos.x), toY(playerPos.z));
-      ctx.lineTo(toX(missionTarget.x), toY(missionTarget.z));
+      ctx.moveTo(mx(m.px), mz(m.pz));
+      ctx.lineTo(mx(m.tx), mz(m.tz));
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = '#f5c542';
-      ctx.beginPath();
-      ctx.arc(toX(missionTarget.x), toY(missionTarget.z), 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#111';
-      ctx.font = 'bold 7px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('M', toX(missionTarget.x), toY(missionTarget.z) + 2.5);
+      // Mission marker.
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath(); ctx.arc(mx(m.tx), mz(m.tz), 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx(m.tx), mz(m.tz), 9, 0, Math.PI * 2); ctx.stroke();
     }
-    // Traffic dots.
-    ctx.fillStyle = '#c8c8d8';
-    if (trafficCars) {
-      trafficCars.forEach(function (t) {
-        var p = t.car.mesh.position;
-        ctx.fillRect(toX(p.x) - 1.5, toY(p.z) - 1.5, 3, 3);
-      });
-    }
-    // Rival cars.
-    if (rivalCars) {
-      ctx.fillStyle = '#ff5a3c';
-      rivalCars.forEach(function (r) {
-        ctx.fillRect(toX(r.mesh.position.x) - 2, toY(r.mesh.position.z) - 2, 4, 4);
-      });
-    }
-    // Cop dots.
-    ctx.fillStyle = '#4a90ff';
-    if (cops) {
-      cops.forEach(function (c) {
-        var p = c.mesh.position;
-        ctx.beginPath();
-        ctx.arc(toX(p.x), toY(p.z), 3, 0, Math.PI * 2);
-        ctx.fill();
-      });
+    // Police dots.
+    ctx.fillStyle = '#ff3a3a';
+    for (const p of m.police || []) {
+      ctx.beginPath(); ctx.arc(mx(p.x), mz(p.z), 3.5, 0, Math.PI * 2); ctx.fill();
     }
     // Player arrow.
-    if (playerPos) {
-      ctx.save();
-      ctx.translate(toX(playerPos.x), toY(playerPos.z));
-      ctx.rotate(-playerHeading);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(0, -7);
-      ctx.lineTo(5, 6);
-      ctx.lineTo(-5, 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#f5c542';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+    ctx.save();
+    ctx.translate(mx(m.px), mz(m.pz));
+    ctx.rotate(m.heading);
+    ctx.fillStyle = '#2ad8c8';
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // Border.
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(100, 100, 97, 0, Math.PI * 2); ctx.stroke();
   }
 
-  function update(dt, s) {
-    // s: { cash, health, armor, respect, rank, wanted, speed, carCond, inCar,
-    //   radio, clock, weather, objective, timer, stageIndex, stageCount, progress,
-    //   weaponIndex, reloadT, world, playerPos, playerHeading, missionTarget, cops, traffic, rivals }
-    if (dialogueTimer > 0) {
-      dialogueTimer -= dt;
-      if (dialogueTimer <= 0) hideDialogue();
+  showWheel(weapons, selected) {
+    this.wheelEl.style.display = 'flex';
+    for (let i = 0; i < 6; i++) {
+      const w = weapons[i];
+      const slot = this.wheelSlots[i];
+      slot.s.classList.toggle('selected', i === selected);
+      slot.s.classList.toggle('locked', !w.unlocked);
+      slot.nm.textContent = (i + 1) + ' · ' + w.name;
+      slot.am.textContent = w.unlocked ? w.ammo + ' ammo' : 'LOCKED';
     }
-    if (bannerTimer > 0) {
-      bannerTimer -= dt;
-      if (bannerTimer <= 0 && refs.missionBanner) refs.missionBanner.classList.remove('show');
-    }
-    if (toastTimer > 0) {
-      toastTimer -= dt;
-      if (toastTimer <= 0 && refs.toast) refs.toast.classList.remove('show');
-    }
-    updateCrew(dt);
-    if (refs.wanted) {
-      var stars = '';
-      for (var i = 0; i < 5; i++) stars += i < s.wanted ? '★' : '☆';
-      refs.wanted.textContent = stars;
-      refs.wanted.className = 'wanted-' + s.wanted;
-    }
-    if (refs.cash) refs.cash.textContent = U.fmtCash(s.cash);
-    if (refs.healthFill) refs.healthFill.style.width = U.clamp(s.health, 0, 100) + '%';
-    if (refs.armorFill) refs.armorFill.style.width = U.clamp(s.armor, 0, 100) + '%';
-    if (refs.rankName) refs.rankName.textContent = s.rank;
-    if (refs.respectLine) refs.respectLine.textContent = 'RESPECT ' + s.respect + ' RP';
-    if (refs.rpFill) {
-      var next = PA.missions.nextRankAt(s.respect);
-      var pct = next === null ? 100 : U.clamp((s.respect / next) * 100, 0, 100);
-      refs.rpFill.style.width = pct + '%';
-    }
-    if (refs.dispatchList) {
-      var html = '';
-      if (!s.units || s.units.length === 0) {
-        html = '<div class="dispatch-row"><span class="dispatch-quiet">No active units — streets are quiet.</span></div>';
-      } else {
-        s.units.forEach(function (u) {
-          html += '<div class="dispatch-row"><span class="dispatch-name">' + u.name + '</span>' +
-            '<span class="dispatch-role">' + u.role + '</span>' +
-            '<span class="dispatch-dist">' + U.fmtDist(u.dist) + '</span></div>';
-        });
-      }
-      refs.dispatchList.innerHTML = html;
-    }
-    if (refs.radio) refs.radio.textContent = '♪ ' + s.radio;
-    if (refs.clock) refs.clock.textContent = s.clock;
-    if (refs.weather) refs.weather.textContent = s.weather;
-    if (refs.objective) refs.objective.textContent = s.objective || '';
-    if (refs.missionTimer) refs.missionTimer.textContent = s.timer || '';
-    if (refs.stageBars) {
-      var bars = refs.stageBars.children;
-      for (var b = 0; b < bars.length; b++) {
-        var fill = bars[b].firstChild;
-        var val = 0;
-        if (s.stageCount > 0) {
-          if (b < s.stageIndex) val = 100;
-          else if (b === s.stageIndex) val = Math.round(s.progress * 100);
-        }
-        fill.style.width = val + '%';
-        bars[b].classList.toggle('done', b < s.stageIndex);
-        bars[b].classList.toggle('active', b === s.stageIndex);
-      }
-    }
-    if (refs.speedo) {
-      refs.speedo.style.display = s.inCar ? 'block' : 'none';
-      refs.speedo.textContent = Math.round(Math.abs(s.speed || 0) * 2.2) + ' mph';
-    }
-    if (refs.carCond) {
-      refs.carCond.style.display = s.inCar ? 'block' : 'none';
-      refs.carCond.textContent = 'CAR ' + Math.round(s.carCond || 0) + '%';
-      refs.carCond.className = 'car-cond ' + ((s.carCond || 0) < 30 ? 'bad' : (s.carCond || 0) < 60 ? 'warn' : 'good');
-    }
-    if (refs.crosshair) refs.crosshair.style.display = (!s.inCar && s.started) ? 'block' : 'none';
-    // Weapon slots.
-    for (var wi = 0; wi < weaponSlots.length; wi++) {
-      var w = PA.combat.WEAPONS[wi];
-      var slot = weaponSlots[wi];
-      slot.root.classList.toggle('active', wi === s.weaponIndex);
-      slot.root.classList.toggle('locked', !!w.locked);
-      slot.ammo.textContent = w.locked ? '—' : (w.ammo === Infinity ? '∞' : (s.reloadT > 0 && wi === s.weaponIndex ? 'RELOADING' : w.ammo + ''));
-      slot.lock.textContent = w.locked ? 'LOCKED · M' + (w.unlockAt || 2) : '';
-    }
-    drawMinimap(s.world, s.playerPos, s.playerHeading || 0, s.missionTarget, s.cops, s.traffic, s.rivals);
   }
+  hideWheel() { this.wheelEl.style.display = 'none'; }
 
-  window.PA = window.PA || {};
-  PA.hud = {
-    init: init, update: update, showDialogue: showDialogue, banner: banner,
-    toast: toast, useCrew: useCrew, crew: crew,
-    set onCrewUse(fn) { onCrewUse = fn; },
-    get onCrewUse() { return onCrewUse; }
-  };
-})();
+  showShop(upgrades, owned, cash, onBuy) {
+    this.shopEl.style.display = 'block';
+    this.shopCash.textContent = 'Cash: ' + fmtCash(cash) + ' — press G to close';
+    this.shopList.innerHTML = '';
+    for (const up of upgrades) {
+      const row = el('div', 'hud-shop-row', null, this.shopList);
+      el('div', 'hud-shop-name', up.name, row);
+      el('div', 'hud-shop-desc', up.desc, row);
+      const isOwned = up.id !== 'repair' && owned[up.id];
+      const btn = el('button', 'hud-shop-buy', isOwned ? 'INSTALLED' : fmtCash(up.price), row);
+      btn.disabled = isOwned;
+      btn.addEventListener('click', () => onBuy(up.id));
+    }
+  }
+  hideShop() { this.shopEl.style.display = 'none'; }
+  setShopMessage(msg) { this.shopMsg.textContent = msg || ''; }
+
+  toast(msg, seconds) {
+    this.toastEl.textContent = msg;
+    this.toastEl.style.display = 'block';
+    this.toastTimer = seconds || 3;
+  }
+}
