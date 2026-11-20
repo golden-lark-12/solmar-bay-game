@@ -15,9 +15,11 @@ export class Traffic {
       const key = node.x + ',' + node.z;
       if (used.has(key)) continue;
       used.add(key);
-      const mesh = makeCarMesh(Math.floor(rng() * 8));
+      const colorIndex = Math.floor(rng() * 8);
+      const mesh = makeCarMesh(colorIndex);
       scene.add(mesh);
       const car = new Car(mesh, node.x + range(rng, -3, 3), node.z + range(rng, -3, 3), rng() * Math.PI * 2);
+      car.colorIndex = colorIndex; // HUD reads this for the model name
       car.cruise = range(rng, 7, 12);
       car.target = pick(rng, node.next);
       car.wait = 0;
@@ -30,11 +32,13 @@ export class Traffic {
     ];
     for (const [road, off, dir] of spots) {
       const along = [-150, -90, 30, 90, 150][Math.floor(rng() * 5)];
-      const mesh = makeCarMesh(Math.floor(rng() * 8));
+      const colorIndex = Math.floor(rng() * 8);
+      const mesh = makeCarMesh(colorIndex);
       scene.add(mesh);
       const x = dir === 0 ? along : road + off;
       const z = dir === 0 ? road + off : along;
       const car = new Car(mesh, x, z, dir === 0 ? 0 : Math.PI / 2);
+      car.colorIndex = colorIndex; // HUD reads this for the model name
       car.parked = true;
       car.speed = 0;
       this.parked.push(car);

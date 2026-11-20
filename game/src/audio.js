@@ -1,6 +1,7 @@
 // audio.js — all sound is synthesised with WebAudio. No audio files, no network.
-// Engine hum follows speed, sirens wail while wanted, plus gunshots, chimes and
-// a quiet dusk pad. Everything is guarded so a missing AudioContext never throws.
+// Engine hum follows speed, sirens wail while wanted, plus gunshots, chimes, an
+// explosion thump and a quiet golden-hour pad. Everything is guarded so a
+// missing AudioContext never throws.
 let ctx = null, master = null, muted = false;
 let engineOsc = null, engineGain = null, engineFilter = null;
 let sirenOsc = null, sirenGain = null, sirenLfo = null;
@@ -19,7 +20,7 @@ export function toggleMute() { muted = !muted; if (master) master.gain.value = m
 export function isMuted() { return muted; }
 
 function startPad() {
-  // Warm two-oscillator dusk pad, very quiet, looping forever.
+  // Warm two-oscillator golden-hour pad, very quiet, looping forever.
   const g = ctx.createGain(); g.gain.value = 0.045; g.connect(master);
   const o1 = ctx.createOscillator(); o1.type = 'triangle'; o1.frequency.value = 110;
   const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 164.81;
@@ -84,6 +85,20 @@ export function playGunshot() {
   blip(160, 0.08, 'square', 0.2);
 }
 
+// Low thump + crackle for a car going up in flames.
+export function playExplosion() {
+  if (!ctx) return;
+  const dur = 0.7, t = ctx.currentTime;
+  const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 3;
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
+  const g = ctx.createGain(); g.gain.value = 0.9;
+  src.connect(f); f.connect(g); g.connect(master); src.start(t);
+  blip(70, 0.5, 'sine', 0.5);
+}
+
 export function playChime() { blip(880, 0.18, 'sine', 0.22); blip(1318, 0.28, 'sine', 0.2, 0.09); }
 export function playPickup() { blip(660, 0.12, 'triangle', 0.25); blip(990, 0.2, 'triangle', 0.22, 0.07); }
 export function playJingle() {
@@ -92,3 +107,4 @@ export function playJingle() {
 export function playFail() { blip(220, 0.3, 'sawtooth', 0.18); blip(165, 0.4, 'sawtooth', 0.16, 0.16); }
 export function playPunch() { blip(120, 0.09, 'square', 0.25); }
 export function playClick() { blip(1400, 0.04, 'square', 0.12); }
+export function playHorn() { blip(370, 0.22, 'square', 0.12); blip(466, 0.22, 'square', 0.1, 0.02); }

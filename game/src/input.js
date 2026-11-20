@@ -1,6 +1,8 @@
 // input.js — keyboard + mouse state with edge-triggered "just pressed" actions.
 // Pointer lock is requested by the game only after a real user click; shot mode
 // (headless screenshots) never asks for it and drives the camera itself.
+// Crew keys (Z / X / C) and weapon keys (1-6) are read through the same
+// pressed()/down() helpers as the movement keys.
 export const keys = Object.create(null);
 export const justPressed = Object.create(null);
 export let mouseDX = 0;
@@ -30,7 +32,7 @@ export function initInput(canvas, onLockChange) {
     if (onLockChange) onLockChange(locked);
   });
   canvas.addEventListener('click', () => {
-    if (!locked && !window.__SOLMAR_SHOT__) {
+    if (!locked && !window.__PUERTO_ALBA_SHOT__) {
       try { canvas.requestPointerLock(); } catch { /* headless / denied */ }
     }
   });

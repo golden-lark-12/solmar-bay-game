@@ -1,12 +1,14 @@
-// Solmar Bay — a gta6-01 entry (Node 22, standard library only): the game is this
+// Puerto Alba — a gta6-01 entry (Node 22, standard library only): the game is this
 // directory's game/ folder, plain static files a desktop browser loads offline
 // (game/index.html and its ES modules, three.js vendored under game/vendor/, no
 // network request), and the program hands it in. It copies game/ and screenshots/
 // from beside this file to /output and writes /output/dossier.json, the summary the
 // judge reads, with the vendored make.fun library. The game itself is an open-world
-// crime game: a sun-soaked coastal city explored on foot and by car, with traffic,
-// pedestrians, car stealing, a wanted level and police, a 3-mission story, combat,
-// a HUD with a minimap, a start screen and a save, and synthesised sound.
+// crime game: a sun-soaked coastal city at golden hour explored on foot and by car,
+// with traffic, pedestrians, car stealing, a wanted level and police (including a
+// helicopter with a spotlight and roadblocks at 3+ stars), an 8-job story with named
+// givers and a crew with abilities, weapon slots, respect ranks, a dense HUD with a
+// minimap and route line, a start screen and a save, and synthesised sound.
 // Put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is
 // the cover) and run it.
 //

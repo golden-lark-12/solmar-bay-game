@@ -1,6 +1,7 @@
 // pedestrians.js — walkers on the sidewalks who stroll between intersections,
 // scatter when a gunshot goes off or a police chase passes, and occasionally
-// drop a little cash when punched. Low-poly figures, shared geometries.
+// drop a little cash when punched. A few beachgoers stroll the sand by the
+// ocean. Low-poly figures, shared geometries.
 import { pick, range, rangeInt } from './utils.js';
 
 const SHIRTS = [0xe8e8e8, 0x4a8ac0, 0xe0a040, 0x7ab06a, 0xc06a8a, 0x8a6ac0];
@@ -15,7 +16,7 @@ export class Pedestrians {
     const skin = new THREE.MeshLambertMaterial({ color: 0xc89878 });
     const pants = new THREE.MeshLambertMaterial({ color: 0x30384a });
     const shirts = SHIRTS.map(c => new THREE.MeshLambertMaterial({ color: c }));
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 26; i++) {
       const g = new THREE.Group();
       const body = new THREE.Mesh(bodyGeo, pick(rng, shirts));
       body.position.y = 1.15; body.castShadow = true; g.add(body);
@@ -23,14 +24,16 @@ export class Pedestrians {
       head.position.y = 1.72; g.add(head);
       const legL = new THREE.Mesh(legGeo, pants); legL.position.set(-0.15, 0.4, 0); g.add(legL);
       const legR = legL.clone(); legR.position.x = 0.15; g.add(legR);
+      const onBeach = i >= 20; // last six stroll the sand, not the sidewalks
       const node = city.nodes[Math.floor(rng() * city.nodes.length)];
       const p = {
         group: g, legL, legR,
-        x: node.x + range(rng, -4, 4), z: node.z + range(rng, -4, 4),
+        x: onBeach ? range(rng, -264, -244) : node.x + range(rng, -4, 4),
+        z: onBeach ? range(rng, -200, 200) : node.z + range(rng, -4, 4),
         heading: rng() * Math.PI * 2,
-        speed: range(rng, 1.0, 1.8),
+        speed: onBeach ? range(rng, 0.6, 1.1) : range(rng, 1.0, 1.8),
         target: null, flee: 0, down: false, downTimer: 0,
-        phase: rng() * 6.28,
+        phase: rng() * 6.28, beach: onBeach,
       };
       p.target = this.pickTarget(p);
       scene.add(g);
@@ -39,6 +42,10 @@ export class Pedestrians {
   }
 
   pickTarget(p) {
+    if (p.beach) {
+      // beachgoers wander up and down the sand strip
+      return { x: p.x + range(Math.random, -4, 4), z: Math.max(-220, Math.min(220, p.z + range(Math.random, -40, 40))) };
+    }
     const near = this.city.nodes.filter(n => Math.hypot(n.x - p.x, n.z - p.z) < 130);
     const n = pick(Math.random, near.length ? near : this.city.nodes);
     return { x: n.x + range(Math.random, -5, 5), z: n.z + range(Math.random, -5, 5) };
@@ -81,8 +88,13 @@ export class Pedestrians {
       p.heading += diff * Math.min(1, 6 * dt);
       p.x += Math.sin(p.heading) * speed * dt;
       p.z += Math.cos(p.heading) * speed * dt;
-      p.x = Math.max(-260, Math.min(250, p.x));
-      p.z = Math.max(-250, Math.min(250, p.z));
+      if (p.beach) {
+        p.x = Math.max(-266, Math.min(-240, p.x));
+        p.z = Math.max(-230, Math.min(230, p.z));
+      } else {
+        p.x = Math.max(-260, Math.min(250, p.x));
+        p.z = Math.max(-250, Math.min(250, p.z));
+      }
       p.group.position.set(p.x, 0, p.z);
       p.group.rotation.y = p.heading;
       const swing = Math.sin(t * 7 + p.phase) * 0.5 * (speed / 1.5);

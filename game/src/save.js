@@ -1,6 +1,6 @@
-// save.js — localStorage save/load. Only numbers, strings and mission flags;
-// nothing personal, no identifiers of any kind.
-const KEY = 'solmar-bay-save-v1';
+// save.js — localStorage save/load for Puerto Alba. Only numbers, strings and
+// mission flags; nothing personal, no identifiers of any kind.
+const KEY = 'puerto-alba-save-v1';
 
 export function saveGame(state) {
   try {
@@ -10,6 +10,7 @@ export function saveGame(state) {
       missionIndex: state.missionIndex,
       pos: [Math.round(state.player.pos.x * 10) / 10, Math.round(state.player.pos.z * 10) / 10],
       health: Math.round(state.player.health),
+      armour: Math.round(state.player.armour),
       stashes: state.stashesCollected.slice(),
       bestTrial: state.bestTrial,
     };

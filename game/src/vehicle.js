@@ -1,6 +1,7 @@
 // vehicle.js — car factory (low-poly, shared materials) and arcade car physics:
 // acceleration, braking, steering that scales with speed, handbrake drift,
 // skid smoke and headlights. One class serves player cars, traffic and police.
+// Also builds the striped roadblock barrier and scorched wreck shells.
 import { clamp, angleDiff } from './utils.js';
 
 const bodyColors = [0xc03a3a, 0x3a6ac0, 0xe8c84a, 0x4aa86a, 0xd8d8d8, 0x2a2a30, 0xe07a2a, 0x8a4aa8];
@@ -51,6 +52,50 @@ export function makeCarMesh(colorIndex = 0, police = false) {
   const tl = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.1), tailMat);
   tl.position.set(0, 0.62, -2.16); g.add(tl);
   g.userData.wheels = wheels;
+  g.userData.police = police;
+  return g;
+}
+
+// Striped police barrier: a sawhorse bar across the road, two legs, two cones.
+export function makeBarrierMesh() {
+  const g = new THREE.Group();
+  const white = new THREE.MeshLambertMaterial({ color: 0xf0f0e8 });
+  const red = new THREE.MeshLambertMaterial({ color: 0xd82828, emissive: 0x661111 });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.5, 0.24), white);
+  bar.position.y = 1.05; bar.castShadow = true; g.add(bar);
+  for (let i = -2; i <= 2; i += 2) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.52, 0.26), red);
+    stripe.position.set(i * 1.35, 1.05, 0); g.add(stripe);
+  }
+  for (const sx of [-2.4, 2.4]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.7),
+      new THREE.MeshLambertMaterial({ color: 0x303030 }));
+    leg.position.set(sx, 0.55, 0); g.add(leg);
+  }
+  const coneMat = new THREE.MeshLambertMaterial({ color: 0xff6a1a, emissive: 0x992200 });
+  for (const sx of [-3.6, 3.6]) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.0, 8), coneMat);
+    cone.position.set(sx, 0.5, 0.8); cone.castShadow = true; g.add(cone);
+  }
+  return g;
+}
+
+// Scorched wreck shell: blackened body, caved cabin, one wheel gone, tilted.
+export function makeWreckMesh() {
+  const g = new THREE.Group();
+  const burnt = new THREE.MeshLambertMaterial({ color: 0x1c1a18 });
+  const body = new THREE.Mesh(bodyGeo, burnt);
+  body.position.y = 0.45; body.rotation.z = 0.06; body.castShadow = true; g.add(body);
+  const cabin = new THREE.Mesh(cabinGeo,
+    new THREE.MeshLambertMaterial({ color: 0x0c0c0c }));
+  cabin.position.set(0, 0.9, -0.2); cabin.scale.y = 0.55; g.add(cabin);
+  for (const [x, z] of [[-0.95, 1.35], [0.95, -1.35], [-0.95, -1.35]]) {
+    const w = new THREE.Group();
+    const tire = new THREE.Mesh(wheelGeo, tireMat);
+    tire.rotation.z = Math.PI / 2; w.add(tire);
+    w.position.set(x, 0.34, z); g.add(w);
+  }
+  g.userData.wheels = [];
   return g;
 }
 
@@ -63,7 +108,7 @@ export class Car {
     this.steer = 0;
     this.maxSpeed = 34;
     this.maxReverse = 10;
-    this.health = 100;
+    this.health = 100;      // car condition % — rams and bullets wear it down
     this.skidding = false;
   }
 
@@ -104,8 +149,10 @@ export class Car {
       // front wheels steer visually
     }
     const front = this.mesh.userData.wheels;
-    front[0].rotation.y = this.steer * 0.4;
-    front[1].rotation.y = this.steer * 0.4;
+    if (front.length >= 2) {
+      front[0].rotation.y = this.steer * 0.4;
+      front[1].rotation.y = this.steer * 0.4;
+    }
   }
 }
 

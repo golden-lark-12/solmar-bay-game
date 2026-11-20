@@ -12,22 +12,22 @@ export class UI {
 
   showStart(hasSave) {
     this.menu.style.display = 'flex';
-    this.title.textContent = 'SOLMAR BAY';
-    this.sub.textContent = 'A sun-soaked coastal city. Ria Solano owes a debt — and the only way out is through it.';
+    this.title.textContent = 'PUERTO ALBA';
+    this.sub.textContent = 'A sun-soaked coastal city at golden hour. Ria Solano owes a debt — and the only way out is through it. Eight jobs. One crew. The whole bay watching.';
     this.buttons.innerHTML = '';
     this.addBtn('▶  Start Story', () => this.cb.onStartStory());
     this.addBtn('◎  Free Roam', () => this.cb.onFreeRoam());
     if (hasSave) this.addBtn('↻  Continue', () => this.cb.onContinue());
     const help = document.createElement('div');
     help.id = 'menu-help';
-    help.innerHTML = 'WASD move / drive &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E enter &amp; steal cars &nbsp;·&nbsp; Space brake &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; F punch &nbsp;·&nbsp; R reload &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; Esc pause &nbsp;·&nbsp; M mute';
+    help.innerHTML = 'WASD move / drive &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E enter &amp; steal cars &nbsp;·&nbsp; Space brake &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; F punch &nbsp;·&nbsp; R reload &nbsp;·&nbsp; 1-6 weapons &nbsp;·&nbsp; Z / X / C crew abilities &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; Esc pause &nbsp;·&nbsp; M mute';
     this.buttons.appendChild(help);
   }
 
   showPause() {
     this.menu.style.display = 'flex';
     this.title.textContent = 'PAUSED';
-    this.sub.textContent = 'Solmar Bay waits for no one — except right now.';
+    this.sub.textContent = 'Puerto Alba waits for no one — except right now.';
     this.buttons.innerHTML = '';
     this.addBtn('▶  Resume', () => this.cb.onResume());
     this.addBtn('↻  Restart Story', () => this.cb.onStartStory());

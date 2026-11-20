@@ -1,6 +1,7 @@
 // player.js — Ria Solano on foot: WASD movement relative to camera, Shift to run,
 // third-person orbit camera with pointer-lock mouse look, and a low-poly figure
-// whose legs swing as she walks. Also owns health and the "busted / wasted" hooks.
+// whose legs swing as she walks. Also owns health, armour (which soaks damage
+// first) and the "busted / wasted" hooks.
 import { clamp, angleDiff } from './utils.js';
 import { collide } from './city.js';
 
@@ -12,6 +13,7 @@ export class Player {
     this.camYaw = Math.PI; // camera orbit yaw
     this.camPitch = 0.32;
     this.health = 100;
+    this.armour = 55;
     this.speed = 0;
     this.inCar = null;     // Car instance when driving
     this.punchTimer = 0;
@@ -101,11 +103,20 @@ export class Player {
     camPos.set(cx, Math.max(1.2, cy), cz);
   }
 
-  damage(amount) { this.health = Math.max(0, this.health - amount); return this.health <= 0; }
+  // Armour soaks damage first; only the overflow touches health.
+  damage(amount) {
+    let left = amount;
+    if (this.armour > 0) {
+      const soak = Math.min(this.armour, left);
+      this.armour -= soak; left -= soak;
+    }
+    this.health = Math.max(0, this.health - left);
+    return this.health <= 0;
+  }
   heal(amount) { this.health = Math.min(100, this.health + amount); }
   respawn(x, z) {
     this.pos.x = x; this.pos.z = z;
-    this.health = 100; this.inCar = null; this.speed = 0;
+    this.health = 100; this.armour = 55; this.inCar = null; this.speed = 0;
     this.group.position.set(x, 0, z);
   }
 }

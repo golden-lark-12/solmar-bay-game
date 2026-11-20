@@ -1,4 +1,4 @@
-// utils.js — small shared helpers: seeded random, math, formatting.
+// utils.js — small shared helpers: seeded random, math, formatting, respect ranks.
 // Nothing here knows about the game; every other module imports from here.
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -28,4 +28,15 @@ export function fmtCash(n) { return '$' + Math.round(n).toLocaleString('en-US');
 export function fmtTime(sec) {
   const s = Math.max(0, Math.ceil(sec));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+// 24h clock from minutes since midnight: 1125 -> "18:45".
+export function fmtClock(mins) {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+// Respect ladder: DRIVER -> FIXER -> SHOT CALLER. rpMax is the top of the band.
+export function respectRank(rp) {
+  if (rp >= 5000) return { rank: 'SHOT CALLER', rpMax: 5200, band: 2 };
+  if (rp >= 1000) return { rank: 'FIXER', rpMax: 5200, band: 1 };
+  return { rank: 'DRIVER', rpMax: 1000, band: 0 };
 }
