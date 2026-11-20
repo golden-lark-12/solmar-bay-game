@@ -1,104 +1,123 @@
-// pedestrians.js — walkers on the sidewalks who stroll between intersections,
-// scatter when a gunshot goes off or a police chase passes, and occasionally
-// drop a little cash when punched. A few beachgoers stroll the sand by the
-// ocean. Low-poly figures, shared geometries.
-import { pick, range, rangeInt } from './utils.js';
+// Puerto Alba — pedestrians.js
+// Sidewalk crowds: walkers, strollers, and people who run when trouble starts.
+(function () {
+  'use strict';
+  var U = PA.utils;
 
-const SHIRTS = [0xe8e8e8, 0x4a8ac0, 0xe0a040, 0x7ab06a, 0xc06a8a, 0x8a6ac0];
+  var SHIRTS = [0xe86a5a, 0x4a90c8, 0xf5c542, 0x3f8f4f, 0xe8e8e8, 0x8a5a8a, 0x2a8a8a, 0xc22a2a];
+  var NAMES = ['Ana', 'Luis', 'Marta', 'Diego', 'Carmen', 'Pablo', 'Lucia', 'Jorge', 'Nina', 'Rafa', 'Elena', 'Oscar'];
 
-export class Pedestrians {
-  constructor(scene, city, rng) {
-    this.city = city;
-    this.list = [];
-    const bodyGeo = new THREE.BoxGeometry(0.55, 0.75, 0.3);
-    const headGeo = new THREE.SphereGeometry(0.22, 8, 6);
-    const legGeo = new THREE.BoxGeometry(0.18, 0.7, 0.18);
-    const skin = new THREE.MeshLambertMaterial({ color: 0xc89878 });
-    const pants = new THREE.MeshLambertMaterial({ color: 0x30384a });
-    const shirts = SHIRTS.map(c => new THREE.MeshLambertMaterial({ color: c }));
-    for (let i = 0; i < 26; i++) {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(bodyGeo, pick(rng, shirts));
-      body.position.y = 1.15; body.castShadow = true; g.add(body);
-      const head = new THREE.Mesh(headGeo, skin);
-      head.position.y = 1.72; g.add(head);
-      const legL = new THREE.Mesh(legGeo, pants); legL.position.set(-0.15, 0.4, 0); g.add(legL);
-      const legR = legL.clone(); legR.position.x = 0.15; g.add(legR);
-      const onBeach = i >= 20; // last six stroll the sand, not the sidewalks
-      const node = city.nodes[Math.floor(rng() * city.nodes.length)];
-      const p = {
-        group: g, legL, legR,
-        x: onBeach ? range(rng, -264, -244) : node.x + range(rng, -4, 4),
-        z: onBeach ? range(rng, -200, 200) : node.z + range(rng, -4, 4),
-        heading: rng() * Math.PI * 2,
-        speed: onBeach ? range(rng, 0.6, 1.1) : range(rng, 1.0, 1.8),
-        target: null, flee: 0, down: false, downTimer: 0,
-        phase: rng() * 6.28, beach: onBeach,
-      };
-      p.target = this.pickTarget(p);
-      scene.add(g);
-      this.list.push(p);
-    }
+  function Ped(scene, path) {
+    this.path = path;
+    this.seg = 0;
+    this.dir = 1;
+    this.name = U.pick(NAMES);
+    this.speed = U.rand(1.2, 2.2);
+    this.fleeing = false;
+    this.fleeT = 0;
+    var g = new THREE.Group();
+    var shirt = new THREE.MeshLambertMaterial({ color: U.pick(SHIRTS) });
+    var skin = new THREE.MeshLambertMaterial({ color: U.pick([0xe8b88a, 0xc98a5a, 0x8a5a3a, 0xf0c8a0]) });
+    var legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.8, 0.26), new THREE.MeshLambertMaterial({ color: 0x2a2a3a }));
+    legs.position.y = 0.4;
+    g.add(legs);
+    var torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.3), shirt);
+    torso.position.y = 1.1;
+    g.add(torso);
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skin);
+    head.position.y = 1.62;
+    g.add(head);
+    var armL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.55, 0.12), shirt);
+    armL.position.set(-0.32, 1.1, 0);
+    g.add(armL);
+    var armR = armL.clone();
+    armR.position.x = 0.32;
+    g.add(armR);
+    this.mesh = g;
+    this.armL = armL;
+    this.armR = armR;
+    this.legs = legs;
+    var start = path[0];
+    g.position.set(start.x + U.rand(-1, 1), 0, start.z + U.rand(-1, 1));
+    scene.add(g);
+    this.walkPhase = U.rand(0, 6);
+    this.alive = true;
   }
 
-  pickTarget(p) {
-    if (p.beach) {
-      // beachgoers wander up and down the sand strip
-      return { x: p.x + range(Math.random, -4, 4), z: Math.max(-220, Math.min(220, p.z + range(Math.random, -40, 40))) };
-    }
-    const near = this.city.nodes.filter(n => Math.hypot(n.x - p.x, n.z - p.z) < 130);
-    const n = pick(Math.random, near.length ? near : this.city.nodes);
-    return { x: n.x + range(Math.random, -5, 5), z: n.z + range(Math.random, -5, 5) };
-  }
-
-  // Everyone within radius runs away from (x, z) for a few seconds.
-  scare(x, z, radius = 30) {
-    for (const p of this.list) {
-      if (p.down) continue;
-      const d = Math.hypot(p.x - x, p.z - z);
-      if (d < radius) { p.flee = 3 + Math.random() * 2; p.fleeFrom = { x, z }; }
-    }
-  }
-
-  knockDown(p) { p.down = true; p.downTimer = 4; p.flee = 0; }
-
-  update(dt, t) {
-    for (const p of this.list) {
-      if (p.down) {
-        p.downTimer -= dt;
-        p.group.rotation.x = p.downTimer > 0 ? -Math.PI / 2 + 0.15 : 0;
-        if (p.downTimer <= 0) { p.down = false; p.group.rotation.x = 0; p.flee = 3; p.fleeFrom = { x: p.x, z: p.z }; }
-        continue;
+  Ped.prototype.update = function (dt, danger, dangerPos) {
+    if (!this.alive) return;
+    var p = this.mesh.position;
+    var speed = this.speed;
+    if (danger && dangerPos) {
+      var d = U.dist2(p.x, p.z, dangerPos.x, dangerPos.z);
+      if (d < 26) {
+        this.fleeing = true;
+        this.fleeT = 2.5;
       }
-      let tx, tz, speed = p.speed;
-      if (p.flee > 0) {
-        p.flee -= dt;
-        const dx = p.x - p.fleeFrom.x, dz = p.z - p.fleeFrom.z;
-        const d = Math.hypot(dx, dz) || 1;
-        tx = p.x + (dx / d) * 10; tz = p.z + (dz / d) * 10;
-        speed = 4.5;
-      } else {
-        tx = p.target.x; tz = p.target.z;
-        if (Math.hypot(tx - p.x, tz - p.z) < 3) p.target = this.pickTarget(p);
+    }
+    if (this.fleeT > 0) {
+      this.fleeT -= dt;
+      if (this.fleeT <= 0) this.fleeing = false;
+    }
+    if (this.fleeing && dangerPos) {
+      speed = 5.2;
+      var away = Math.atan2(p.x - dangerPos.x, p.z - dangerPos.z);
+      p.x += Math.sin(away) * speed * dt;
+      p.z += Math.cos(away) * speed * dt;
+      this.mesh.rotation.y = away;
+    } else {
+      var target = this.path[this.seg];
+      var d2 = U.dist2(p.x, p.z, target.x, target.z);
+      if (d2 < 2) {
+        this.seg += this.dir;
+        if (this.seg >= this.path.length || this.seg < 0) {
+          this.dir = -this.dir;
+          this.seg = U.clamp(this.seg, 0, this.path.length - 1);
+        }
+        target = this.path[this.seg];
       }
-      const want = Math.atan2(tx - p.x, tz - p.z);
-      let diff = want - p.heading;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      p.heading += diff * Math.min(1, 6 * dt);
-      p.x += Math.sin(p.heading) * speed * dt;
-      p.z += Math.cos(p.heading) * speed * dt;
-      if (p.beach) {
-        p.x = Math.max(-266, Math.min(-240, p.x));
-        p.z = Math.max(-230, Math.min(230, p.z));
-      } else {
-        p.x = Math.max(-260, Math.min(250, p.x));
-        p.z = Math.max(-250, Math.min(250, p.z));
-      }
-      p.group.position.set(p.x, 0, p.z);
-      p.group.rotation.y = p.heading;
-      const swing = Math.sin(t * 7 + p.phase) * 0.5 * (speed / 1.5);
-      p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
+      var want = Math.atan2(target.x - p.x, target.z - p.z);
+      this.mesh.rotation.y = U.turnToward(this.mesh.rotation.y, want, 3 * dt);
+      p.x += Math.sin(this.mesh.rotation.y) * speed * dt;
+      p.z += Math.cos(this.mesh.rotation.y) * speed * dt;
+    }
+    this.walkPhase += dt * (this.fleeing ? 14 : 7);
+    var swing = Math.sin(this.walkPhase) * 0.5;
+    this.armL.rotation.x = swing;
+    this.armR.rotation.x = -swing;
+    this.legs.rotation.x = Math.sin(this.walkPhase) * 0.15;
+  };
+
+  function Crowd(scene, world) {
+    this.peds = [];
+    var paths = world.pedPaths;
+    for (var i = 0; i < 26; i++) {
+      var path = paths[i % paths.length];
+      this.peds.push(new Ped(scene, path));
+    }
+    // Beach strollers.
+    for (var j = 0; j < 6; j++) {
+      var bp = new Ped(scene, [{ x: -160, z: 168 }, { x: 160, z: 168 }]);
+      bp.speed = U.rand(0.8, 1.4);
+      this.peds.push(bp);
     }
   }
-}
+
+  Crowd.prototype.update = function (dt, danger, dangerPos) {
+    for (var i = 0; i < this.peds.length; i++) this.peds[i].update(dt, danger, dangerPos);
+  };
+
+  Crowd.prototype.nearest = function (x, z, maxDist) {
+    var best = null, bd = maxDist || 3;
+    for (var i = 0; i < this.peds.length; i++) {
+      var p = this.peds[i];
+      if (!p.alive) continue;
+      var d = U.dist2(x, z, p.mesh.position.x, p.mesh.position.z);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  };
+
+  window.PA = window.PA || {};
+  PA.pedestrians = { Crowd: Crowd, Ped: Ped };
+})();

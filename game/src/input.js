@@ -1,46 +1,106 @@
-// input.js — keyboard + mouse state with edge-triggered "just pressed" actions.
-// Pointer lock is requested by the game only after a real user click; shot mode
-// (headless screenshots) never asks for it and drives the camera itself.
-// Crew keys (Z / X / C) and weapon keys (1-6) are read through the same
-// pressed()/down() helpers as the movement keys.
-export const keys = Object.create(null);
-export const justPressed = Object.create(null);
-export let mouseDX = 0;
-export let mouseDY = 0;
-export let mouseClicked = false;
-export let locked = false;
+// Puerto Alba — input.js
+// Keyboard + mouse state with edge-triggered "pressed" events.
+(function () {
+  'use strict';
 
-const HANDLED = ['Space', 'KeyE', 'KeyF', 'KeyR', 'KeyM', 'Escape', 'Tab'];
+  var keys = {};
+  var pressed = {};
+  var mouse = { x: 0, y: 0, down: false, clicked: false, dragDX: 0, dragDY: 0 };
+  var lastX = 0, lastY = 0, dragging = false;
+  var anyKey = false;
 
-export function initInput(canvas, onLockChange) {
-  window.addEventListener('keydown', (e) => {
-    if (HANDLED.includes(e.code)) e.preventDefault();
-    if (!keys[e.code]) justPressed[e.code] = true;
+  function onKeyDown(e) {
+    if (e.repeat) return;
     keys[e.code] = true;
-    if (e.code === 'Escape' && document.pointerLockElement) document.exitPointerLock();
-  });
-  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-  document.addEventListener('mousemove', (e) => {
-    if (document.pointerLockElement === canvas) { mouseDX += e.movementX; mouseDY += e.movementY; }
-  });
-  document.addEventListener('mousedown', (e) => {
-    if (document.pointerLockElement === canvas && e.button === 0) mouseClicked = true;
-  });
-  document.addEventListener('pointerlockchange', () => {
-    locked = document.pointerLockElement === canvas;
-    if (onLockChange) onLockChange(locked);
-  });
-  canvas.addEventListener('click', () => {
-    if (!locked && !window.__PUERTO_ALBA_SHOT__) {
-      try { canvas.requestPointerLock(); } catch { /* headless / denied */ }
+    pressed[e.code] = true;
+    anyKey = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].indexOf(e.code) >= 0) {
+      e.preventDefault();
     }
-  });
-}
+  }
 
-export function endFrame() {
-  for (const k in justPressed) justPressed[k] = false;
-  mouseDX = 0; mouseDY = 0; mouseClicked = false;
-}
-export function pressed(code) { return !!justPressed[code]; }
-export function down(code) { return !!keys[code]; }
+  function onKeyUp(e) {
+    keys[e.code] = false;
+  }
+
+  function init(canvas) {
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', function () {
+      for (var k in keys) keys[k] = false;
+    });
+    if (canvas) {
+      canvas.addEventListener('mousedown', function (e) {
+        mouse.down = true;
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+      window.addEventListener('mouseup', function (e) {
+        mouse.down = false;
+        dragging = false;
+        mouse.clicked = true;
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+      });
+      window.addEventListener('mousemove', function (e) {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+        if (dragging) {
+          mouse.dragDX += e.clientX - lastX;
+          mouse.dragDY += e.clientY - lastY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+        }
+      });
+      canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    }
+  }
+
+  function isDown(code) { return !!keys[code]; }
+
+  function wasPressed(code) {
+    if (pressed[code]) {
+      pressed[code] = false;
+      return true;
+    }
+    return false;
+  }
+
+  function consumeClick() {
+    var c = mouse.clicked;
+    mouse.clicked = false;
+    return c;
+  }
+
+  function consumeDrag() {
+    var dx = mouse.dragDX, dy = mouse.dragDY;
+    mouse.dragDX = 0;
+    mouse.dragDY = 0;
+    return { dx: dx, dy: dy };
+  }
+
+  // Movement axes: x = strafe/right, y = forward. WASD + arrows.
+  function axes() {
+    var x = 0, y = 0;
+    if (isDown('KeyA') || isDown('ArrowLeft')) x -= 1;
+    if (isDown('KeyD') || isDown('ArrowRight')) x += 1;
+    if (isDown('KeyW') || isDown('ArrowUp')) y += 1;
+    if (isDown('KeyS') || isDown('ArrowDown')) y -= 1;
+    return { x: x, y: y };
+  }
+
+  function endFrame() {
+    pressed = {};
+    mouse.clicked = false;
+  }
+
+  function hadAnyKey() { return anyKey; }
+
+  window.PA = window.PA || {};
+  PA.input = {
+    init: init, isDown: isDown, wasPressed: wasPressed,
+    consumeClick: consumeClick, consumeDrag: consumeDrag,
+    axes: axes, endFrame: endFrame, hadAnyKey: hadAnyKey, mouse: mouse
+  };
+})();

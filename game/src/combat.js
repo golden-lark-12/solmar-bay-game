@@ -1,157 +1,142 @@
-// combat.js — the weapon slots: fists, P9 pistol, Mako SMG (unlocks after the
-// second job) and three locked slots (12G Breacher, AR-9, RPG). Keys 1-6 switch
-// slots, R reloads the current gun, click fires a hitscan shot with a tracer +
-// muzzle flash, F punches. Shooting is loud: it scares pedestrians and raises
-// wanted. Raycasts against pedestrians, cop cars, traffic cars and mission
-// target cars only.
-import { dist2 } from './utils.js';
+// Puerto Alba — combat.js
+// Six weapon slots: fists to launcher, ammo, reload, hit tests.
+(function () {
+  'use strict';
+  var U = PA.utils;
 
-const RANGE = 90;
+  var WEAPONS = [
+    { name: 'Fists', key: '1', damage: 12, range: 2.6, rate: 0.45, auto: false, ammo: Infinity, maxAmmo: Infinity, locked: false, desc: 'Knuckles' },
+    { name: 'Pistol', key: '2', damage: 22, range: 42, rate: 0.28, auto: false, ammo: 60, maxAmmo: 60, locked: false, desc: 'AP-9 sidearm' },
+    { name: 'SMG', key: '3', damage: 14, range: 36, rate: 0.09, auto: true, ammo: 120, maxAmmo: 120, locked: false, desc: 'Buzz-9 spray' },
+    { name: 'Shotgun', key: '4', damage: 16, range: 20, rate: 0.85, auto: false, ammo: 24, maxAmmo: 24, locked: true, desc: 'Boomstick', unlockAt: 2 },
+    { name: 'Rifle', key: '5', damage: 38, range: 70, rate: 0.16, auto: true, ammo: 90, maxAmmo: 90, locked: true, desc: 'Longshot-7', unlockAt: 4 },
+    { name: 'Launcher', key: '6', damage: 120, range: 60, rate: 1.4, auto: false, ammo: 6, maxAmmo: 6, locked: true, desc: 'Firework XL', unlockAt: 6 }
+  ];
 
-const SLOT_DEFS = [
-  { name: 'FISTS', short: 'FISTS', mag: 0, reserve: 0, dmg: 0, locked: false },
-  { name: 'P9 PISTOL', short: 'P9', mag: 12, reserve: 60, dmg: 34, locked: false },
-  { name: 'MAKO SMG', short: 'MAKO', mag: 30, reserve: 150, dmg: 18, locked: true },
-  { name: '12G BREACHER', short: '12G', mag: 6, reserve: 24, dmg: 60, locked: true },
-  { name: 'AR-9', short: 'AR-9', mag: 24, reserve: 120, dmg: 26, locked: true },
-  { name: 'RPG', short: 'RPG', mag: 1, reserve: 3, dmg: 200, locked: true },
-];
-
-export class Combat {
-  constructor(scene, player) {
-    this.scene = scene;
-    this.player = player;
-    // live per-slot state (ammo in the mag, ammo in reserve, locked?)
-    this.slots = SLOT_DEFS.map(d => ({ ...d, ammo: d.mag, reserveAmmo: d.reserve }));
-    this.selected = 1; // P9 by default
-    this.reloadTimer = 0;
-    this.flashTimer = 0;
-    // muzzle flash: small bright plane at the gun tip
-    this.flash = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.7, 0.7),
-      new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false }));
-    this.flash.visible = false;
-    scene.add(this.flash);
-    // tracer line
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.9 }));
-    this.tracer.visible = false;
-    this.tracer.frustumCulled = false;
-    scene.add(this.tracer);
+  function Combat(state) {
+    this.state = state; // campaign state: weaponsUnlocked, ammo
+    this.current = 1;
+    this.cooldown = 0;
+    this.reloadT = 0;
+    this.kills = 0;
+    this.shotsFired = 0;
+    this.syncFromState();
   }
 
-  get reloading() { return this.reloadTimer > 0; }
-  get weapon() { return this.slots[this.selected]; }
-  // Back-compat accessors for the HUD's old ammo line.
-  get ammo() { return this.weapon.ammo; }
-  get reserve() { return this.weapon.reserveAmmo; }
+  Combat.prototype.syncFromState = function () {
+    for (var i = 0; i < WEAPONS.length; i++) {
+      WEAPONS[i].locked = !(this.state.weaponsUnlocked[i]);
+      if (isFinite(WEAPONS[i].maxAmmo)) {
+        WEAPONS[i].ammo = this.state.ammo[i] || 0;
+      }
+    }
+  };
 
-  // The Mako SMG unlocks once two jobs are done; the rest stay locked.
-  unlockForJobs(jobsDone) {
-    if (jobsDone >= 2) this.slots[2].locked = false;
-  }
+  Combat.prototype.syncToState = function () {
+    for (var i = 0; i < WEAPONS.length; i++) {
+      this.state.weaponsUnlocked[i] = !WEAPONS[i].locked;
+      if (isFinite(WEAPONS[i].maxAmmo)) this.state.ammo[i] = WEAPONS[i].ammo;
+    }
+  };
 
-  select(i) {
-    if (i < 0 || i >= this.slots.length) return false;
-    if (this.slots[i].locked) return false;
-    if (i === this.selected) return false;
-    this.selected = i;
-    this.reloadTimer = 0;
+  Combat.prototype.weapon = function () { return WEAPONS[this.current]; };
+
+  Combat.prototype.select = function (index) {
+    if (index < 0 || index >= WEAPONS.length) return false;
+    if (WEAPONS[index].locked) {
+      if (PA.hud) PA.hud.toast(WEAPONS[index].name + ' is LOCKED — finish job M' + (WEAPONS[index].unlockAt || 2) + ' to unlock it');
+      if (PA.audio) PA.audio.bad();
+      return false;
+    }
+    this.current = index;
+    if (PA.audio) PA.audio.blip();
     return true;
-  }
+  };
 
-  // HUD-ready snapshot of every slot.
-  slotInfo() {
-    return this.slots.map((s, i) => ({
-      n: i + 1, name: s.short, full: s.name, locked: s.locked,
-      ammo: s.mag === 0 ? '∞' : s.ammo, reserve: s.mag === 0 ? '' : '/' + s.reserveAmmo,
-      active: i === this.selected,
-    }));
-  }
-
-  update(dt) {
-    if (this.reloadTimer > 0) {
-      this.reloadTimer -= dt;
-      if (this.reloadTimer <= 0) {
-        const w = this.weapon;
-        const need = w.mag - w.ammo;
-        const take = Math.min(need, w.reserveAmmo);
-        w.ammo += take; w.reserveAmmo -= take;
+  Combat.prototype.unlockForMission = function (missionNumber) {
+    var changed = [];
+    for (var i = 0; i < WEAPONS.length; i++) {
+      if (WEAPONS[i].unlockAt === missionNumber && WEAPONS[i].locked) {
+        WEAPONS[i].locked = false;
+        WEAPONS[i].ammo = WEAPONS[i].maxAmmo;
+        changed.push(WEAPONS[i].name);
       }
     }
-    if (this.flashTimer > 0) {
-      this.flashTimer -= dt;
-      if (this.flashTimer <= 0) { this.flash.visible = false; this.tracer.visible = false; }
+    if (changed.length) this.syncToState();
+    return changed;
+  };
+
+  Combat.prototype.canFire = function () {
+    var w = WEAPONS[this.current];
+    if (this.cooldown > 0 || this.reloadT > 0) return false;
+    if (w.ammo !== Infinity && w.ammo <= 0) return false;
+    return true;
+  };
+
+  Combat.prototype.reload = function () {
+    var w = WEAPONS[this.current];
+    if (!isFinite(w.maxAmmo) || w.ammo >= w.maxAmmo || this.reloadT > 0) return;
+    this.reloadT = 1.1;
+    if (PA.audio) PA.audio.blip();
+  };
+
+  // Fires from origin along heading. Targets: { list, pos(), hurt(dmg), radius }.
+  Combat.prototype.fire = function (origin, heading, targets, world) {
+    var w = WEAPONS[this.current];
+    if (!this.canFire()) {
+      if (w.ammo === 0 && this.cooldown <= 0 && PA.hud) PA.hud.toast('Out of ammo — press R to reload');
+      return false;
     }
-  }
-
-  tryReload() {
-    const w = this.weapon;
-    if (w.mag === 0) return false;
-    if (w.ammo < w.mag && w.reserveAmmo > 0 && this.reloadTimer <= 0) {
-      this.reloadTimer = 1.1;
-      return true;
-    }
-    return false;
-  }
-
-  // Fire from the player's chest along the camera yaw. Returns a hit report.
-  // extraTargets: [{x, z, r, ref}] — e.g. a mission target car.
-  shoot(camYaw, peds, police, traffic, extraTargets = []) {
-    if (this.player.inCar || this.reloadTimer > 0) return null;
-    const w = this.weapon;
-    if (w.mag === 0) return null; // fists don't shoot — F punches instead
-    if (w.ammo <= 0) return { empty: true };
-    w.ammo--;
-    const p = this.player.pos;
-    const ox = p.x, oy = 1.45, oz = p.z;
-    const dx = -Math.sin(camYaw), dz = -Math.cos(camYaw);
-    let best = null, bestD = RANGE;
-    const test = (x, z, radius, ref) => {
-      // ray vs circle in the XZ plane
-      const rx = x - ox, rz = z - oz;
-      const along = rx * dx + rz * dz;
-      if (along < 0 || along > bestD) return;
-      const perp = Math.abs(rx * dz - rz * dx);
-      if (perp < radius + 0.4) { best = ref; bestD = along; }
-    };
-    for (const ped of peds.list) if (!ped.down) test(ped.x, ped.z, 0.5, { type: 'ped', ped });
-    for (const cop of police.cops) test(cop.pos.x, cop.pos.z, 1.4, { type: 'cop', cop });
-    for (const car of traffic.allCars()) test(car.pos.x, car.pos.z, 1.6, { type: 'car', car });
-    for (const t of extraTargets) test(t.x, t.z, t.r || 1.6, t.ref);
-    const hx = ox + dx * bestD, hz = oz + dz * bestD;
-    // show flash + tracer
-    const u = this.player.group.userData;
-    const gunWorld = new THREE.Vector3();
-    u.gun.getWorldPosition(gunWorld);
-    this.flash.position.copy(gunWorld);
-    this.flash.lookAt(hx, 1.4, hz);
-    this.flash.visible = true;
-    const pos = this.tracer.geometry.attributes.position.array;
-    pos[0] = gunWorld.x; pos[1] = gunWorld.y; pos[2] = gunWorld.z;
-    pos[3] = hx; pos[4] = 1.4; pos[5] = hz;
-    this.tracer.geometry.attributes.position.needsUpdate = true;
-    this.tracer.visible = true;
-    this.flashTimer = 0.07;
-    return { hit: best, hx, hz, dist: bestD, dmg: w.dmg };
-  }
-
-  punch(peds, onHit) {
-    if (this.player.inCar) return false;
-    this.player.punchTimer = 0.35;
-    const p = this.player.pos;
-    const fx = Math.sin(this.player.heading), fz = Math.cos(this.player.heading);
-    for (const ped of peds.list) {
-      if (ped.down) continue;
-      const dx = ped.x - p.x, dz = ped.z - p.z;
-      const d = Math.hypot(dx, dz);
-      if (d < 2.2 && (dx * fx + dz * fz) / (d || 1) > 0.3) {
-        peds.knockDown(ped);
-        if (onHit) onHit(ped);
-        return true;
+    this.cooldown = w.rate;
+    this.shotsFired++;
+    if (w.ammo !== Infinity) w.ammo--;
+    if (PA.audio) PA.audio.shot();
+    var fx = Math.sin(heading), fz = Math.cos(heading);
+    var mx = origin.x + fx * 1.2, my = (origin.y || 1.2), mz = origin.z + fz * 1.2;
+    if (PA.effects) PA.effects.spawnMuzzle(mx, my, mz, heading);
+    var pellets = w.name === 'Shotgun' ? 5 : 1;
+    var hitAny = false;
+    for (var p = 0; p < pellets; p++) {
+      var spread = (w.name === 'Shotgun' ? U.rand(-0.09, 0.09) : U.rand(-0.015, 0.015));
+      var hx = Math.sin(heading + spread), hz = Math.cos(heading + spread);
+      for (var i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        if (!t.alive) continue;
+        var tp = t.pos();
+        var dx = tp.x - mx, dz = tp.z - mz;
+        var along = dx * hx + dz * hz;
+        if (along < 0 || along > w.range) continue;
+        var perp = Math.abs(dx * hz - dz * hx);
+        if (perp < (t.radius || 1.2)) {
+          t.hurt(w.damage);
+          hitAny = true;
+          if (PA.effects) PA.effects.spawnSparks(tp.x, 1.2, tp.z);
+          if (t.dead || t.health <= 0) this.kills++;
+          break;
+        }
       }
     }
-    return false;
-  }
-}
+    if (w.name === 'Launcher' && PA.effects) {
+      PA.effects.spawnExplosion(mx + fx * 14, 1, mz + fz * 14, 1.6);
+      if (PA.audio) PA.audio.boom();
+    }
+    this.syncToState();
+    return hitAny;
+  };
+
+  Combat.prototype.update = function (dt) {
+    if (this.cooldown > 0) this.cooldown -= dt;
+    if (this.reloadT > 0) {
+      this.reloadT -= dt;
+      if (this.reloadT <= 0) {
+        var w = WEAPONS[this.current];
+        w.ammo = w.maxAmmo;
+        this.syncToState();
+        if (PA.hud) PA.hud.toast(w.name + ' reloaded');
+      }
+    }
+  };
+
+  window.PA = window.PA || {};
+  PA.combat = { Combat: Combat, WEAPONS: WEAPONS };
+})();

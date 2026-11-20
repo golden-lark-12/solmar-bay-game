@@ -1,78 +1,77 @@
-// traffic.js — AI cars that loop the road grid: pick a route node by node,
-// drive with the same arcade physics as the player car, slow for the car ahead,
-// and keep a little right of the road centre so two-way streets read as traffic.
-import { Car, makeCarMesh, steerToward } from './vehicle.js';
-import { pick, range } from './utils.js';
+// Puerto Alba — traffic.js
+// Ambient traffic: cars looping the avenues, slowing for jams.
+(function () {
+  'use strict';
+  var U = PA.utils;
 
-export class Traffic {
-  constructor(scene, city, rng) {
-    this.city = city;
+  function TrafficCar(scene, loop, offset, color) {
+    this.loop = loop;
+    this.wp = offset % loop.length;
+    this.car = new PA.vehicle.Car(scene, {
+      x: loop[this.wp].x, z: loop[this.wp].z, heading: 0, color: color, sporty: false
+    });
+    this.speed = U.rand(9, 13);
+    this.stuck = 0;
+  }
+
+  TrafficCar.prototype.update = function (dt, world, blocker) {
+    var target = this.loop[this.wp];
+    var p = this.car.mesh.position;
+    var d = U.dist2(p.x, p.z, target.x, target.z);
+    if (d < 4) {
+      this.wp = (this.wp + 1) % this.loop.length;
+      target = this.loop[this.wp];
+    }
+    var want = Math.atan2(target.x - p.x, target.z - p.z);
+    this.car.heading = U.turnToward(this.car.heading, want, 1.6 * dt);
+    var slow = 1;
+    if (blocker) {
+      var bd = U.dist2(p.x, p.z, blocker.x, blocker.z);
+      if (bd < 10) slow = 0.25;
+      if (bd < 5) slow = 0;
+    }
+    var f = this.car.forward();
+    var nx = p.x + f.x * this.speed * slow * dt;
+    var nz = p.z + f.z * this.speed * slow * dt;
+    if (world) {
+      var hit = world.collide(nx, nz, 1.6);
+      nx = hit.x; nz = hit.z;
+    }
+    p.x = nx; p.z = nz;
+    this.car.mesh.rotation.y = this.car.heading;
+    var wheels = this.car.mesh.userData.wheels;
+    for (var i = 0; i < wheels.length; i++) wheels[i].rotation.x += (this.speed * slow * dt) / 0.36;
+  };
+
+  function Traffic(scene, world) {
+    this.scene = scene;
+    this.world = world;
     this.cars = [];
-    this.parked = [];
-    const used = new Set();
-    for (let i = 0; i < 14; i++) {
-      const node = city.nodes[Math.floor(rng() * city.nodes.length)];
-      const key = node.x + ',' + node.z;
-      if (used.has(key)) continue;
-      used.add(key);
-      const colorIndex = Math.floor(rng() * 8);
-      const mesh = makeCarMesh(colorIndex);
-      scene.add(mesh);
-      const car = new Car(mesh, node.x + range(rng, -3, 3), node.z + range(rng, -3, 3), rng() * Math.PI * 2);
-      car.colorIndex = colorIndex; // HUD reads this for the model name
-      car.cruise = range(rng, 7, 12);
-      car.target = pick(rng, node.next);
-      car.wait = 0;
-      this.cars.push(car);
-    }
-    // parked cars along the roads (stealable)
-    const spots = [
-      [-60, 4, 0], [60, -4, 1], [120, 4, 0], [-120, -4, 1], [0, 4, 0],
-      [180, -4, 1], [-180, 4, 0], [240, -4, 1], [30, -4, 1], [-30, 4, 0],
-    ];
-    for (const [road, off, dir] of spots) {
-      const along = [-150, -90, 30, 90, 150][Math.floor(rng() * 5)];
-      const colorIndex = Math.floor(rng() * 8);
-      const mesh = makeCarMesh(colorIndex);
-      scene.add(mesh);
-      const x = dir === 0 ? along : road + off;
-      const z = dir === 0 ? road + off : along;
-      const car = new Car(mesh, x, z, dir === 0 ? 0 : Math.PI / 2);
-      car.colorIndex = colorIndex; // HUD reads this for the model name
-      car.parked = true;
-      car.speed = 0;
-      this.parked.push(car);
-    }
+    var palette = PA.vehicle.CAR_COLORS;
+    var n = 0;
+    world.trafficLoops.forEach(function (loop, li) {
+      var count = li === 0 ? 4 : 3;
+      for (var i = 0; i < count; i++) {
+        var tc = new TrafficCar(scene, loop, i * 1 + li, palette[n % palette.length]);
+        n++;
+        this.cars.push(tc);
+      }
+    }, this);
   }
 
-  // All drivable cars (moving + parked) for steal / enter checks.
-  allCars() { return this.cars.concat(this.parked); }
-
-  update(dt, playerPos, effects) {
-    for (const car of this.cars) {
-      if (!car.target) { car.target = pick(Math.random, car.target ? car.target.next : this.city.nodes[0].next); continue; }
-      const tx = car.target.x, tz = car.target.z;
-      const dx = tx - car.pos.x, dz = tz - car.pos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 4) {
-        const next = car.target.next;
-        car.target = next.length ? pick(Math.random, next) : this.city.nodes[0];
-        continue;
+  Traffic.prototype.update = function (dt, playerPos) {
+    for (var i = 0; i < this.cars.length; i++) {
+      var blocker = null;
+      if (playerPos) {
+        // Only the nearest traffic car cares about the player as a blocker.
+        blocker = playerPos;
       }
-      // slow down for a car ahead on the same stretch
-      let throttle = 1;
-      for (const other of this.cars) {
-        if (other === car) continue;
-        const ox = other.pos.x - car.pos.x, oz = other.pos.z - car.pos.z;
-        const ahead = ox * Math.sin(car.heading) + oz * Math.cos(car.heading);
-        const side = Math.abs(ox * Math.cos(car.heading) - oz * Math.sin(car.heading));
-        if (ahead > 0 && ahead < 9 && side < 3.2) { throttle = -0.6; break; }
-      }
-      const steer = steerToward(car, tx, tz, dt);
-      car.drive(throttle, steer, false, dt);
-      car.speed = Math.min(car.speed, car.cruise);
-      car.sync(dt);
+      this.cars[i].update(dt, this.world, blocker);
     }
-    for (const car of this.parked) car.sync(dt);
-  }
-}
+  };
+
+  Traffic.prototype.count = function () { return this.cars.length; };
+
+  window.PA = window.PA || {};
+  PA.traffic = { Traffic: Traffic };
+})();

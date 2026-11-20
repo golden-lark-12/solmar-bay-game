@@ -1,101 +1,94 @@
-# Puerto Alba
+# Puerto Alba — an open-world crime story
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/golden-lark-12/solmar-bay-game/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/golden-lark-12/solmar-bay-game/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+A sun-soaked coastal open-world crime game that runs entirely from static
+files under `game/`. No build step, no network requests, no accounts.
+Open `game/index.html` in desktop Chrome (or run `node serve.ts` and visit
+http://localhost:8080) and play with keyboard and mouse.
 
-Puerto Alba is an open-world crime game in the spirit of GTA 6, built for the
-make.fun gta6-01 bounty. Ria Solano, getaway driver, owes a debt — and the only
-way out is through it. Explore a sun-soaked coastal city at golden hour on foot
-and by car: steal cars, outrun the police helicopter, run jobs across town, and
-collect cash stashes.
+## The story — "The Debt"
 
-## The city
+Ria Solano, getaway driver, owes Don Rafael Alba forty grand. Eight jobs
+stand between her and freedom:
 
-A full procedural city at golden hour: downtown glass towers, beachfront
-hotels, suburbs, parks and palm trees, a beach with umbrellas, a pier and a
-marina, and a causeway bridge out to an island with a lighthouse. The sky runs
-purple to orange over the ocean, the sun sits low, and streetlights glow as the
-shadows stretch. Traffic loops the road grid, pedestrians stroll the sidewalks
-(and scatter when shots are fired), beachgoers wander the sand.
+| # | Job | Giver |
+|---|-----|-------|
+| M1 | Hot Wheels | Marco "Wrench" Vela |
+| M2 | The Drop | Lena Cruz |
+| M3 | Causeway Run | Dario Font |
+| M4 | Harbor Lights | Sofia Marin |
+| M5 | The Vault Job | Elias "Ledger" Prado |
+| M6 | Ghost in the Machine | Mina Okafor |
+| M7 | Payback at the Docks | Tito Rivas |
+| M8 | The Debt Paid | Don Rafael Alba |
 
-## Systems
+Each job pays cash and respect points (RP). Respect raises Ria's rank —
+Wheelman, Getaway Driver, Street Legend, Ghost of Alba, Queen of the
+Causeway — and finishing jobs unlocks new weapons. Her crew of three
+travels with her: Jax the getaway driver, Mina the hacker, and Tito the
+muscle, each with an ability on a cooldown (Z / X / C).
 
-- **On foot:** WASD + mouse look (pointer lock), Shift to run, third-person camera
-- **Driving:** E to enter or exit, WASD to drive, Space to brake / handbrake,
-  follow camera, speedometer, car condition %, headlights, skid smoke
-- **Car stealing:** E near any parked or traffic car — the driver bails and the
-  car is yours, but the law notices
-- **Wanted level 0–5 stars:** rises on stealing, hitting pedestrians and
-  shooting; police cars spawn, chase and ram; at 3+ stars Air One (a police
-  helicopter with a spotlight cone) joins and a roadblock is thrown across the
-  road ahead; hide to cool off; get busted or wasted and you pay a fine and
-  wake up across town
-- **Combat:** F to punch, mouse-click to shoot (hitscan with tracer and muzzle
-  flash). Six weapon slots (1-6): Fists, P9 pistol, Mako SMG (unlocks after
-  JOB 2/8), and three locked slots (12G Breacher, AR-9, RPG). R reloads.
-- **Crew (Z / X / C):** Mira the driver swaps plates (drops a wanted star),
-  Lio the mechanic quick-fixes the car, Kiki the lookout calls out the police
-  response. Each ability has a cooldown.
-- **Story — "The Debt", 8 jobs:** each job has a named giver and a spoken line
-  — Marisol "Sol" Quintana the fixer, Tía Rosa the diner owner, Lupe the
-  smuggler, Uncle Dee the fixer, Mira Kesang the driver. JOB 1 Hot Wheels
-  (steal a car), JOB 2 The Drop (marina pickup), JOB 3 Causeway Run (cross the
-  bridge at 3 stars), JOB 4 Repo Rodeo (lift the valet coupe), JOB 5 Salt &
-  Sirens (survive a 40-second parade), JOB 6 Wreck the Regent (ram the target
-  car before it reaches the pier), JOB 7 Golden Hour (lose the manhunt before
-  the boat sails), JOB 8 The Debt Paid (bring the ledger home).
-- **Respect:** jobs and stashes earn RP — climb DRIVER → FIXER → SHOT CALLER
-- **Free roam:** 10 cash stashes to collect and a 5-gate checkpoint time trial
-- **HUD:** mission banner with stage bars and timer, PAPD dispatch panel
-  (named units, roles, live distances), weapon slots, crew abilities, respect
-  rank + RP bar, health + armour, cash, wanted stars, radio station, location
-  label, dialogue box, and a live minimap with roads, a route line to the
-  objective, the player arrow, police dots, the helicopter, the roadblock and
-  the mission blip
-- **Menus & save:** start screen (Start Story / Free Roam / Continue), pause
-  with Esc, save/load via localStorage (cash, missions, position, stashes)
-- **Audio:** 100% synthesised WebAudio — engine hum by speed, two-tone siren,
-  gunshots, explosion thump, pickup chimes, mission jingles, ambient
-  golden-hour pad. M to mute. No audio files.
+## What is in the game
 
-## Run it
-
-```sh
-node serve.ts
-```
-
-Then open http://localhost:8080. No build step, no network — the game runs
-offline from static files (three.js r160 is vendored under `game/vendor/`).
+- A full 3D city at golden hour: avenues, towers with lit windows, a beach
+  with palms and umbrellas, a bay, and a causeway to an island — built with
+  vendored three.js 0.160.0 (`game/vendor/three.min.js`).
+- On foot and by car: steal any parked car (E), drive with arcade physics,
+  car condition and damage.
+- Traffic that loops the avenues and pedestrians who stroll the sidewalks —
+  and run when trouble starts.
+- Wanted level 0–5 with the Alba PD: pursuit cars that flank and ram,
+  roadblocks, and Air One, the police helicopter with a searchlight.
+- Combat: six weapon slots (fists, pistol, SMG, shotgun, rifle, launcher)
+  with ammo, reloads and locked states.
+- A dense HUD: wanted stars, cash, health/armor, respect and rank, the Alba
+  PD dispatch panel with named units and distances, a minimap with a gold
+  route line, weapon slots, a dialogue box, stage bars, a timer, the radio
+  station, car condition and the crew panel.
+- Start screen, pause menu, localStorage saves, and a fully synthesized
+  WebAudio soundtrack: engine hum, sirens, gunshots, booms and radio
+  jingles. No audio files.
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| WASD | Move / drive |
-| Mouse | Look (click the game to lock the mouse) |
-| Shift | Run |
-| E | Enter / exit / steal a car, pick up, start the time trial |
-| Space | Brake / handbrake |
-| Click | Shoot |
-| F | Punch |
-| R | Reload |
-| 1–6 | Switch weapon slot |
-| Z / X / C | Crew: swap plates / quick fix / eyes out |
-| Esc | Pause |
-| M | Mute |
+- WASD / arrows — drive or move (Shift to sprint on foot)
+- E — steal a car / exit a car
+- Mouse drag — orbit the camera; click — shoot
+- 1–6 — weapons, R — reload
+- Z / X / C — crew abilities (Slipstream, Loop Feeds, Ram)
+- J — start the next job, V — change radio station, H — horn
+- M — mute, P / Esc — pause
 
-## Structure
+## Files
 
-`game/src/` is split into one file per system: `main.js` (boot + loop +
-shot mode), `city.js`, `player.js`, `vehicle.js`, `traffic.js`,
-`pedestrians.js`, `police.js` (helicopter, roadblock, dispatch),
-`missions.js` (8 jobs + crew + respect), `combat.js` (weapon slots),
-`hud.js` (incl. minimap with route line), `audio.js`, `save.js`,
-`effects.js` (incl. fire + explosions), `ui.js`, `input.js`, `utils.js`.
-Everything — city, characters, vehicles, story, art and sound — is original
-work made for this entry.
+- `game/index.html` — the page and the whole HUD layout
+- `game/src/utils.js` — math, formatting and DOM helpers
+- `game/src/save.js` — localStorage saves
+- `game/src/audio.js` — synthesized WebAudio sound
+- `game/src/input.js` — keyboard and mouse
+- `game/src/city.js` — the city, beach, causeway, collision
+- `game/src/vehicle.js` — cars and arcade driving
+- `game/src/traffic.js` — ambient traffic
+- `game/src/pedestrians.js` — sidewalk crowds
+- `game/src/player.js` — Ria on foot
+- `game/src/police.js` — wanted level, pursuit, helicopter, roadblocks
+- `game/src/combat.js` — weapons, ammo, hit tests
+- `game/src/effects.js` — explosions, smoke, sparks, camera shake
+- `game/src/missions.js` — the eight story jobs
+- `game/src/hud.js` — HUD, dispatch panel, minimap, dialogue
+- `game/src/ui.js` — start / pause / busted screens
+- `game/src/main.js` — boot, game loop, camera, screenshot staging
+- `main.ts` — hands the game in: copies `game/` and `screenshots/` to
+  `/output` and writes `/output/dossier.json`
+- `serve.ts` — tiny static dev server
 
----
+## Screenshots
 
-<sub>Entered on [make.fun](https://make.fun/?ref=m1wzkt80&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+`screenshots/` holds four renders of the game itself, staged with `?shot=`
+parameters: 1-chase (the cover: golden-hour pursuit with Air One overhead),
+2-steal, 3-mission, 4-vista.
+
+## Originality
+
+Puerto Alba, Ria Solano, the Alba PD, the crew and every job are original
+creations for this entry. Nothing here copies any commercial game — no
+names, characters, maps, art or music from any other title.
