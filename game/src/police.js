@@ -1,3 +1,4 @@
+// Police dispatch and helicopter air support module.
 // police.js — Puerto Alba police: wanted levels, pursuit cruisers, dispatch
 // board, helicopter with a wide spotlight cone + bright ground pool.
 import { Car } from './vehicle.js';
