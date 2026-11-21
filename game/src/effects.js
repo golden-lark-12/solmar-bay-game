@@ -54,19 +54,25 @@ export class Effects {
     return p;
   }
 
-  // Large bright fireball: tight layered sprites at modest opacities so the
-  // additive stack stays deep orange instead of blowing out to white.
+  // Large fireball: a SOLID deep-orange sphere is the core, so the ball
+  // reads as a hard-edged circle; deep-orange glow sprites only, no white
+  // anywhere, so nothing in the additive stack can blow out to a white glow.
   explosion(x, z, scale) {
     const s = scale || 1;
-    const coreStops = [[0, 'rgba(255,246,200,1)'], [0.5, 'rgba(255,170,40,1)'], [0.8, 'rgba(255,100,10,0.95)'], [1, 'rgba(255,60,0,0)']];
-    const midStops = [[0, 'rgba(255,138,26,1)'], [0.6, 'rgba(255,110,20,0.9)'], [1, 'rgba(255,80,10,0)']];
-    const outerStops = [[0, 'rgba(255,74,0,1)'], [0.6, 'rgba(255,60,0,0.85)'], [1, 'rgba(200,40,0,0)']];
-    const haloStops = [[0, 'rgba(255,42,0,0.9)'], [0.6, 'rgba(255,42,0,0.35)'], [1, 'rgba(255,42,0,0)']];
+    // Solid sphere core — the hard-edged ball itself.
+    const ball = new this.THREE.Mesh(
+      new this.THREE.SphereGeometry(2.2 * s, 16, 16),
+      new this.THREE.MeshBasicMaterial({ color: 0xff5a00, transparent: true, opacity: 1 })
+    );
+    ball.position.set(x, 2, z);
+    this.scene.add(ball);
+    this._add(ball, 1.0, 1, { grow: 2 * s });
+    // Deep-orange glow only — no near-white stops in either sprite.
+    const midStops = [[0, 'rgba(255,110,20,1)'], [0.6, 'rgba(255,80,10,0.9)'], [1, 'rgba(255,60,0,0)']];
+    const outerStops = [[0, 'rgba(255,60,0,0.9)'], [0.6, 'rgba(220,50,0,0.6)'], [1, 'rgba(200,40,0,0)']];
     const smokeStops = [[0, 'rgba(45,32,28,0.9)'], [0.6, 'rgba(40,30,28,0.55)'], [1, 'rgba(35,28,28,0)']];
-    this._add(this._sprite(coreStops, 6 * s, 0.6, true, x, 1.4, z), 1.0, 0.6, { grow: 3 * s });
-    this._add(this._sprite(midStops, 9 * s, 0.4, true, x, 1.9, z), 1.1, 0.4, { grow: 5 * s });
-    this._add(this._sprite(outerStops, 11 * s, 0.25, true, x, 2.4, z), 1.2, 0.25, { grow: 7 * s });
-    this._add(this._sprite(haloStops, 9 * s, 0.04, true, x, 2.8, z), 1.3, 0.04, { grow: 8 * s });
+    this._add(this._sprite(midStops, 8 * s, 0.35, true, x, 1.9, z), 1.1, 0.35, { grow: 4 * s });
+    this._add(this._sprite(outerStops, 10 * s, 0.2, true, x, 2.4, z), 1.2, 0.2, { grow: 6 * s });
     this._add(this._sprite(smokeStops, 12 * s, 0.4, false, x, 4.5, z), 1.9, 0.4, { grow: 11 * s, vy: 3.5 });
     this._add(this._sprite(smokeStops, 16 * s, 0.35, false, x + 2 * s, 6, z - 1), 2.1, 0.35, { grow: 13 * s, vy: 4 });
     // Point-light flash that decays with the fireball.

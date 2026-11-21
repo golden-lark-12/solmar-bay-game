@@ -108,22 +108,42 @@ export class Police {
 
   spawnHeli() {
     const g = new THREE.Group();
-    // Bright light-gray body so the heli reads against the orange sky.
+    // Dark navy body so the heli reads against the bright orange sky.
     const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 6.5),
-      new THREE.MeshLambertMaterial({ color: 0x9a9aa8 }));
+      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
     g.add(body);
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 6.6),
       new THREE.MeshBasicMaterial({ color: 0xffd76a }));
     stripe.position.y = 0.2; g.add(stripe);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 5),
-      new THREE.MeshLambertMaterial({ color: 0x9a9aa8 }));
+      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
     tail.position.set(0, 0.3, -5); g.add(tail);
+    // Vertical tail fin at the tail end so the tail reads from behind/below.
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 1.4),
+      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
+    fin.position.set(0, 0.9, -7.2); g.add(fin);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 1.8),
       new THREE.MeshLambertMaterial({ color: 0x2a6a8a }));
     glass.position.set(0, 0.2, 2.6); g.add(glass);
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.15, 0.7),
-      new THREE.MeshLambertMaterial({ color: 0xdddddd }));
-    rotor.position.y = 1.3; g.add(rotor);
+    // Coning tilt: the rotor spins about Y, so a flat bar is edge-on and
+    // invisible at some phases and sits above the frame when the heli rides
+    // high. Tilting the spin plane ~26 deg keeps one blade tip dipping
+    // below the body top at every phase, so a rotor blade is always in
+    // frame beside the body. (A banking pursuit heli flies tilted anyway.)
+    // Blades are long (16) so they read as a rotor spanning the sky, not
+    // stubs at the frame edge.
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.7),
+      new THREE.MeshLambertMaterial({ color: 0x222222 }));
+    rotor.position.y = 1.3;
+    rotor.rotation.z = 0.45;
+    g.add(rotor);
+    // Second blade at 90 deg, parented to the rotor so the pair spins as
+    // an X: a single bar is edge-on and invisible at some phases, an X
+    // always shows a broadside blade.
+    const rotor2 = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.7),
+      new THREE.MeshLambertMaterial({ color: 0x222222 }));
+    rotor2.rotation.y = Math.PI / 2;
+    rotor.add(rotor2);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xfff2c0 }));
     lamp.position.set(0, -1.1, 2.5); g.add(lamp);
