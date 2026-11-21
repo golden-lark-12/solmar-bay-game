@@ -1358,6 +1358,53 @@ export class Game {
       if (this.player.group) this.player.group.add(gun);
       this._gun = gun;
     } catch (e) { /* ignore */ }
+    // Persistent muzzle burst anchored to the barrel tip: the staged
+    // combat frame must show the flash at full strength at the gun tip
+    // in every captured frame, independent of burst phase and fade.
+    // (Same staging trick as the persistent sun sprites in the chase
+    // shot.) The anchor rides the gun, so the burst sits exactly on
+    // the visible barrel end whatever the camera does.
+    try {
+      const anchor = new THREE.Group();
+      anchor.position.set(0, 0.02, 0.45);
+      this._gun.add(anchor);
+      this._muzzleAnchor = anchor;
+      const mkSprite = (tex, size, opacity) => {
+        const mat = new THREE.SpriteMaterial({
+          map: tex, transparent: true, opacity: opacity, depthWrite: false,
+          blending: THREE.NormalBlending
+        });
+        const s = new THREE.Sprite(mat);
+        s.scale.set(size, size, 1);
+        s.renderOrder = 20;
+        s.userData.baseOp = opacity;
+        anchor.add(s);
+        return s;
+      };
+      const haloStops = [[0, 'rgba(255,140,30,0.7)'], [0.5, 'rgba(255,100,12,0.45)'], [1, 'rgba(220,55,0,0)']];
+      const coreStops = [[0, 'rgba(255,175,45,1)'], [0.35, 'rgba(255,130,20,1)'], [0.7, 'rgba(240,70,0,0.95)'], [1, 'rgba(210,40,0,0)']];
+      const sparkStops = [[0, 'rgba(255,235,150,1)'], [0.5, 'rgba(255,160,40,0.95)'], [1, 'rgba(240,80,0,0)']];
+      this._muzzleFlash = [
+        mkSprite(this.effects._texture(haloStops), 2.2, 0.4),
+        mkSprite(this.effects._starTexture(), 1.9, 1),
+        mkSprite(this.effects._texture(coreStops), 1.2, 0.95)
+      ];
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 12, 10),
+        new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 1 })
+      );
+      ball.renderOrder = 21;
+      ball.userData.baseOp = 1;
+      anchor.add(ball);
+      this._muzzleFlash.push(ball);
+      const sparkTex = this.effects._texture(sparkStops);
+      const sparkOffs = [[0.5, 0.25, 0.1], [-0.45, 0.3, -0.1], [0.15, -0.45, 0.25]];
+      for (const [ox, oy, oz] of sparkOffs) {
+        const sp = mkSprite(sparkTex, 0.35, 0.95);
+        sp.position.set(ox, oy, oz);
+        this._muzzleFlash.push(sp);
+      }
+    } catch (e) { /* ignore */ }
     this._fireCombatBurst();
     this._nextMuzzle = Date.now() + 250;
     // Wheel docked right (6ca222f layout), dispatch hidden — the heli,
@@ -1386,11 +1433,13 @@ export class Game {
 
   _fireCombatBurst() {
     const h = this.player.heading;
-    // Muzzle at the actual gun tip: the gun sits at local (-0.62, 1.25,
-    // ~1.2 forward), so offset forward 1.2 and to the gun side.
-    const mx = this.player.x + Math.sin(h) * 1.2 - Math.cos(h) * 0.62;
-    const mz = this.player.z + Math.cos(h) * 1.2 + Math.sin(h) * 0.62;
-    this.effects.muzzle(mx, 1.3, mz);
+    // Muzzle at the gun tip: the gun sits at local (-0.62, 1.25, 0.45)
+    // and the burst anchor at gun-local z 0.45, i.e. 0.9 forward of the
+    // player on the gun side — the same world point as the anchor, so
+    // the burst generations and the persistent flash coincide.
+    const mx = this.player.x + Math.sin(h) * 0.9 - Math.cos(h) * 0.62;
+    const mz = this.player.z + Math.cos(h) * 0.9 + Math.sin(h) * 0.62;
+    this.effects.muzzle(mx, 1.27, mz);
     // Hit effect on the closest cruiser: sparks + smoke + damage flash.
     let target = null;
     let best = 1e9;
@@ -1423,10 +1472,10 @@ export class Game {
     }
   }
 
-  _pinHeli(px, pz, dx, dz) {
+  _pinHeli(px, pz, dx, dz, height) {
     const h = this.police.heli;
     if (!h) return;
-    const H = 11;
+    const H = height || 11;
     if (h.group) h.group.position.set(px + dx, H, pz + dz);
     if (h.cone) {
       h.cone.position.y = -H / 2;
@@ -1475,7 +1524,6 @@ export class Game {
       const pz = this.car.z;
       try { this.police.update(dt, px, pz, this.car, null); } catch (e) { /* ignore */ }
       this._pinPolice('chase');
-      this._pinHeli(px, pz, 30, -10);
       try {
         if (this.police.roadblock && this.police.roadblock[0]) {
           this.police.roadblock[0].setPos(px + 15, 200, 1.57 + Math.PI / 2);
@@ -1490,6 +1538,18 @@ export class Game {
         this._chaseSun.core.position.set(px + 280, 120, 190);
       }
       this._chaseCam(dt, 7.2, 2.9, 4.5);
+      // Heli pinned relative to the CAMERA, not the car: the car drives
+      // during the settle, so a car-relative pin drifts behind whatever
+      // building happens to be alongside. Camera-relative, the heli
+      // holds the same sky slot in every captured frame.
+      {
+        const ch = this.car.heading;
+        const cfx = Math.sin(ch), cfz = Math.cos(ch);
+        const crx = -Math.cos(ch), crz = Math.sin(ch);
+        const hx = this.camera.position.x + cfx * 38 + crx * -4;
+        const hz = this.camera.position.z + cfz * 38 + crz * -4;
+        this._pinHeli(hx, hz, 0, 0, 17);
+      }
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
     } else if (shot === 'briefing') {
@@ -1511,6 +1571,14 @@ export class Game {
       if (Date.now() >= this._nextMuzzle) {
         this._fireCombatBurst();
         this._nextMuzzle = Date.now() + 250;
+      }
+      // Persistent muzzle burst: flicker it, never let it fade out.
+      if (this._muzzleFlash && this._muzzleAnchor) {
+        const f = 0.88 + 0.12 * Math.sin(this.elapsed * 31);
+        for (const s of this._muzzleFlash) {
+          if (s.material) s.material.opacity = (s.userData.baseOp || 1) * f;
+        }
+        this._muzzleAnchor.scale.setScalar(0.94 + 0.08 * Math.sin(this.elapsed * 27));
       }
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }

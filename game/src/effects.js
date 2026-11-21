@@ -21,9 +21,13 @@ export class Effects {
     return tex;
   }
 
-  _sprite(stops, size, opacity, additive, x, y, z, maxLife) {
+  _sprite(stops, size, opacity, additive, x, y, z, maxLife, renderOrder) {
+    return this._spriteTex(this._texture(stops), size, opacity, additive, x, y, z, maxLife, renderOrder);
+  }
+
+  _spriteTex(tex, size, opacity, additive, x, y, z, maxLife, renderOrder) {
     const mat = new this.THREE.SpriteMaterial({
-      map: this._texture(stops),
+      map: tex,
       transparent: true,
       opacity: opacity,
       depthWrite: false,
@@ -32,11 +36,38 @@ export class Effects {
     const s = new this.THREE.Sprite(mat);
     s.scale.set(size, size, 1);
     s.position.set(x, y, z);
+    if (renderOrder !== undefined && renderOrder !== null) s.renderOrder = renderOrder;
     this.scene.add(s);
     if (maxLife !== undefined && maxLife !== null) {
       this._add(s, maxLife, opacity, {});
     }
     return s;
+  }
+
+  _starTexture() {
+    // Spiky 4-point starburst: sharp saturated edges read against a flat
+    // bright background where a soft radial glow disappears.
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const ctx = c.getContext('2d');
+    const cx = 64, cy = 64;
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2 - Math.PI / 2;
+      const r = (i % 2 === 0) ? 62 : 30;
+      const px = cx + Math.cos(ang) * r;
+      const py = cy + Math.sin(ang) * r;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 62);
+    g.addColorStop(0, 'rgba(255,205,90,1)');
+    g.addColorStop(0.4, 'rgba(255,140,25,1)');
+    g.addColorStop(1, 'rgba(215,45,0,1)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    return new this.THREE.CanvasTexture(c);
   }
 
   _add(obj, maxLife, baseOpacity, opts) {
@@ -84,18 +115,38 @@ export class Effects {
   }
 
   muzzle(x, y, z) {
-    // Bright burst at the gun tip: tight hot core + warm halo + a short
-    // light. Lives past the 250ms burst interval (and past a slow
-    // headless frame), so a bright flash is visible in every frame,
-    // without overlapping generations blowing the scene out.
-    this._sprite(
-      [[0, 'rgba(255,250,200,1)'], [0.3, 'rgba(255,210,90,0.95)'], [1, 'rgba(255,120,20,0)']],
-      3.4, 1, true, x, y, z, 0.5
+    // Bright burst at the gun tip: saturated orange core + halo + star +
+    // solid core ball + sparks at the muzzle. NORMAL blending, not
+    // additive: the captured background at the gun tip is a near-white
+    // crosswalk / spotlight wash, and an additive glow adds nothing to
+    // white — it vanished. Saturated orange painted over white reads.
+    // Lives 0.55s (past the 250ms burst interval and past a slow
+    // headless frame), so a near-full-opacity burst is in every frame.
+    const coreStops = [[0, 'rgba(255,175,45,1)'], [0.35, 'rgba(255,130,20,1)'], [0.7, 'rgba(240,70,0,0.95)'], [1, 'rgba(210,40,0,0)']];
+    const haloStops = [[0, 'rgba(255,140,30,0.7)'], [0.5, 'rgba(255,100,12,0.45)'], [1, 'rgba(220,55,0,0)']];
+    this._sprite(haloStops, 3.0, 0.6, false, x, y, z, 0.55, 5);
+    this._spriteTex(this._starTexture(), 2.4, 1, false, x, y, z, 0.55, 6);
+    this._sprite(coreStops, 1.7, 1, false, x, y, z, 0.55, 7);
+    // Solid orange core ball: a real saturated disc even where the
+    // gradient centre is pale, so the burst centre cannot wash out.
+    const core = new this.THREE.Mesh(
+      new this.THREE.SphereGeometry(0.24, 12, 10),
+      new this.THREE.MeshBasicMaterial({ color: 0xe85d00, transparent: true, opacity: 0.95 })
     );
-    this._sprite(
-      [[0, 'rgba(255,220,120,0.5)'], [1, 'rgba(255,120,20,0)']],
-      4.0, 0.5, true, x, y, z, 0.55
-    );
+    core.position.set(x, y, z);
+    core.renderOrder = 8;
+    this._add(core, 0.55, 0.95, { grow: 0.25 });
+    // Sparks right at the muzzle: small saturated flecks around the tip.
+    for (let i = 0; i < 6; i++) {
+      const ox = (Math.random() - 0.5) * 1.8;
+      const oy = (Math.random() - 0.5) * 1.4;
+      const oz = (Math.random() - 0.5) * 1.8;
+      this._sprite(
+        [[0, 'rgba(255,235,150,1)'], [0.5, 'rgba(255,160,40,0.95)'], [1, 'rgba(240,80,0,0)']],
+        0.7 + Math.random() * 0.4, 1, false,
+        x + ox, y + oy, z + oz, 0.6, 6
+      );
+    }
     const light = new this.THREE.PointLight(0xffc040, 4, 14);
     light.position.set(x, y + 0.5, z);
     this._add(light, 0.4, 4, {});
