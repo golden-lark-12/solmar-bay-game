@@ -1,5 +1,5 @@
 // take-shots.mjs — serves game/ locally, drives headless Chromium over CDP,
-// captures the 4 shots from shots.json at 1280x900 JPEG, prints game state
+// captures the 4 shots from shots.json at 1280x720 JPEG, prints game state
 // and any console errors. Node stdlib only. Puerto Alba v3.
 
 import { spawn } from 'node:child_process';
@@ -86,7 +86,7 @@ async function main() {
   const chrome = spawn(CHROME, [
     '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
     '--use-angle=swiftshader-webgl', '--enable-unsafe-swiftshader',
-    '--window-size=1600,900', '--hide-scrollbars',
+    '--window-size=1280,720', '--hide-scrollbars',
     `--remote-debugging-port=${DEBUG_PORT}`, 'about:blank'
   ], { stdio: 'ignore' });
   try {
@@ -104,7 +104,7 @@ async function main() {
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
     await cdp.send('Page.enable');
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
 
     for (const shot of shots) {
       const url = `http://127.0.0.1:${PORT}/index.html${shot.query}`;
