@@ -108,35 +108,42 @@ export class Police {
 
   spawnHeli() {
     const g = new THREE.Group();
-    // Dark navy body so the heli reads against the bright orange sky.
+    // Drop the model below the group origin: the game parks the heli high
+    // at the top edge, half hidden behind the mission HUD. Hanging the
+    // model low puts the body, glass and lamp in open sky below the HUD,
+    // with the rotor X above it. (Local -3, scaled by 2.5 = ~7.5 world.)
+    const inner = new THREE.Group();
+    inner.position.y = -3;
+    g.add(inner);
+    // Dark navy body: high contrast so the heli reads against the bright orange sky.
     const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 6.5),
       new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
-    g.add(body);
+    inner.add(body);
+    // Bright gold band: the accent stripe.
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 6.6),
       new THREE.MeshBasicMaterial({ color: 0xffd76a }));
-    stripe.position.y = 0.2; g.add(stripe);
+    stripe.position.y = 0.2; inner.add(stripe);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 5),
       new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
-    tail.position.set(0, 0.3, -5); g.add(tail);
-    // Vertical tail fin at the tail end so the tail reads from behind/below.
+    tail.position.set(0, 0.3, -5); inner.add(tail);
+    // Vertical tail fin: makes the tail read from behind/below.
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 1.4),
       new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
-    fin.position.set(0, 0.9, -7.2); g.add(fin);
+    fin.position.set(0, 0.9, -7.2); inner.add(fin);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 1.8),
       new THREE.MeshLambertMaterial({ color: 0x2a6a8a }));
-    glass.position.set(0, 0.2, 2.6); g.add(glass);
+    glass.position.set(0, 0.2, 2.6); inner.add(glass);
     // Coning tilt: the rotor spins about Y, so a flat bar is edge-on and
     // invisible at some phases and sits above the frame when the heli rides
     // high. Tilting the spin plane ~26 deg keeps one blade tip dipping
     // below the body top at every phase, so a rotor blade is always in
-    // frame beside the body. (A banking pursuit heli flies tilted anyway.)
-    // Blades are long (16) so they read as a rotor spanning the sky, not
-    // stubs at the frame edge.
+    // frame beside the body. Blades are long (16) so they read as a rotor
+    // spanning the sky, not stubs at the frame edge.
     const rotor = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.7),
       new THREE.MeshLambertMaterial({ color: 0x222222 }));
     rotor.position.y = 1.3;
     rotor.rotation.z = 0.45;
-    g.add(rotor);
+    inner.add(rotor);
     // Second blade at 90 deg, parented to the rotor so the pair spins as
     // an X: a single bar is edge-on and invisible at some phases, an X
     // always shows a broadside blade.
@@ -146,10 +153,13 @@ export class Police {
     rotor.add(rotor2);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xfff2c0 }));
-    lamp.position.set(0, -1.1, 2.5); g.add(lamp);
-    g.scale.set(1.4, 1.4, 1.4);
-    // Spotlight cone (translucent) hanging below the helicopter: narrow at
-    // the heli, wide at the ground.
+    lamp.position.set(0, -1.1, 2.5); inner.add(lamp);
+    // Big scale: the heli orbits ~115-145m out, so at 1.4 the dark body was
+    // a speck clipped behind the HUD at the top edge. At 2.5 the body, gold
+    // stripe and tail read as a huge pursuit heli against the orange sky.
+    g.scale.set(2.5, 2.5, 2.5);
+    // Spotlight cone hanging below the helicopter: narrow at the heli,
+    // wide at the ground.
     const cone = new THREE.Mesh(
       new THREE.ConeGeometry(8, 18, 16, 1, true),
       new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false })
