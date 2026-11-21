@@ -1,162 +1,140 @@
-// effects.js — particle sprites: explosions, muzzle flashes, sparks, smoke.
-// Canvas-generated radial-gradient sprites. Fire uses additive blending so it
-// glows; smoke uses normal blending so it reads as dark puffs.
-// v4: fireball is COMPACT and DEEP ORANGE (core yellow, mid orange, outer
-// deep orange-red, faint halo) so it reads as a fireball, not a white wash.
+// effects.js — explosions, muzzle flashes, sparks, smoke.
+// Canvas-generated radial-gradient sprites; fire uses additive blending so
+// it glows, smoke uses normal blending for dark puffs. Compact deep-orange
+// fireball palette (yellow core, orange mid, red-orange outer, faint halo)
+// so the fireball reads hot, never a white wash. Puerto Alba. No personal
+// data, no external references.
 
 export class Effects {
   constructor(THREE, scene) {
     this.THREE = THREE;
     this.scene = scene;
-    this.active = [];
-    this._texCache = new Map();
+    this.textures = new Map();
+    this.parts = []; // {obj, life, maxLife, baseOpacity, grow, vx, vy, vz, light, baseIntensity}
   }
 
-  // Soft radial gradient texture, cached by stop list.
-  _glowTexture(stops) {
+  // Radial-gradient sprite texture, cached by its stop list.
+  _texture(stops) {
     const key = stops.join('|');
-    if (this._texCache.has(key)) return this._texCache.get(key);
-    const size = 128;
+    let tex = this.textures.get(key);
+    if (tex) return tex;
     const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const ctx = c.getContext('2d');
-    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    for (const [pos, col] of stops) g.addColorStop(pos, col);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-    const tex = new this.THREE.CanvasTexture(c);
-    this._texCache.set(key, tex);
+    c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    for (const [at, color] of stops) grad.addColorStop(at, color);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    tex = new this.THREE.CanvasTexture(c);
+    this.textures.set(key, tex);
     return tex;
   }
 
-  _sprite(tex, color, opacity, size, blending) {
+  _sprite(stops, size, opacity, additive, x, y, z) {
     const mat = new this.THREE.SpriteMaterial({
-      map: tex,
-      color: color,
+      map: this._texture(stops),
       transparent: true,
-      opacity: opacity,
+      opacity,
       depthWrite: false,
-      blending: blending || this.THREE.AdditiveBlending,
+      blending: additive ? this.THREE.AdditiveBlending : this.THREE.NormalBlending
     });
-    const sp = new this.THREE.Sprite(mat);
-    sp.scale.set(size, size, 1);
-    sp.userData.baseOpacity = opacity;
-    return sp;
+    const s = new this.THREE.Sprite(mat);
+    s.position.set(x, y, z);
+    s.scale.set(size, size, 1);
+    this.scene.add(s);
+    return s;
   }
 
-  _register(group, maxLife, kind, light) {
-    group.userData = { kind };
-    this.scene.add(group);
-    this.active.push({ group, life: 0, maxLife, kind, light: light || null, lightBase: light ? light.intensity : 0 });
+  _add(obj, maxLife, baseOpacity, opts) {
+    const p = Object.assign(
+      { obj, life: 0, maxLife, baseOpacity, grow: 0, vx: 0, vy: 0, vz: 0, light: null, baseIntensity: 0 },
+      opts || {}
+    );
+    this.parts.push(p);
+    return p;
   }
 
-  // Large bright fireball on the road. scale multiplies the base sizes.
-  // Deep orange palette: yellow core, orange mid, red-orange outer, faint halo.
+  // Large bright fireball: tight layered sprites at modest opacities so the
+  // additive stack stays deep orange instead of blowing out to white.
   explosion(x, z, scale) {
     const s = scale || 1;
-    const g = new this.THREE.Group();
-    const soft = this._glowTexture([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.6)'], [1, 'rgba(255,255,255,0)']]);
-    // Tighter sprites: the old 44x halo filled the whole frame at chase
-    // distance and washed the cover to a haze. A distinct ball, not a fog.
-    // Lower opacities too: additive stacking of full-bright sprites blows
-    // the fireball to white; these keep it deep orange.
-    const core = this._sprite(soft, 0xffe14a, 0.65, 6 * s);
-    const mid = this._sprite(soft, 0xff8a1a, 0.5, 11 * s);
-    const outer = this._sprite(soft, 0xff4a00, 0.35, 18 * s);
-    const halo = this._sprite(soft, 0xff2a00, 0.10, 26 * s);
-    g.add(core);
-    g.add(mid);
-    g.add(outer);
-    g.add(halo);
-    // Rising embers.
-    for (let i = 0; i < 5; i++) {
-      const e = this._sprite(soft, 0xffc23a, 0.9, (4 + Math.random() * 4) * s);
-      e.position.set((Math.random() - 0.5) * 8 * s, Math.random() * 6 * s, (Math.random() - 0.5) * 8 * s);
-      g.add(e);
-    }
-    // Dark smoke puffs for contrast against the bright core.
-    for (let i = 0; i < 4; i++) {
-      const sm = this._sprite(soft, 0x2a1a12, 0.45, (10 + Math.random() * 6) * s, this.THREE.NormalBlending);
-      sm.position.set((Math.random() - 0.5) * 10 * s, 4 + Math.random() * 8 * s, (Math.random() - 0.5) * 10 * s);
-      g.add(sm);
-    }
-    const light = new this.THREE.PointLight(0xff8a2a, 15 * s, 25 * s, 1.6);
-    light.position.set(0, 3, 0);
-    g.add(light);
-    g.position.set(x, 2.0, z);
-    this._register(g, 2.6, 'explosion', light);
+    const coreStops = [[0, 'rgba(255,246,200,1)'], [0.5, 'rgba(255,170,40,1)'], [0.8, 'rgba(255,100,10,0.95)'], [1, 'rgba(255,60,0,0)']];
+    const midStops = [[0, 'rgba(255,138,26,1)'], [0.6, 'rgba(255,110,20,0.9)'], [1, 'rgba(255,80,10,0)']];
+    const outerStops = [[0, 'rgba(255,74,0,1)'], [0.6, 'rgba(255,60,0,0.85)'], [1, 'rgba(200,40,0,0)']];
+    const haloStops = [[0, 'rgba(255,42,0,0.9)'], [0.6, 'rgba(255,42,0,0.35)'], [1, 'rgba(255,42,0,0)']];
+    const smokeStops = [[0, 'rgba(45,32,28,0.9)'], [0.6, 'rgba(40,30,28,0.55)'], [1, 'rgba(35,28,28,0)']];
+    this._add(this._sprite(coreStops, 6 * s, 0.6, true, x, 1.4, z), 1.0, 0.6, { grow: 3 * s });
+    this._add(this._sprite(midStops, 9 * s, 0.4, true, x, 1.9, z), 1.1, 0.4, { grow: 5 * s });
+    this._add(this._sprite(outerStops, 11 * s, 0.25, true, x, 2.4, z), 1.2, 0.25, { grow: 7 * s });
+    this._add(this._sprite(haloStops, 9 * s, 0.04, true, x, 2.8, z), 1.3, 0.04, { grow: 8 * s });
+    this._add(this._sprite(smokeStops, 12 * s, 0.4, false, x, 4.5, z), 1.9, 0.4, { grow: 11 * s, vy: 3.5 });
+    this._add(this._sprite(smokeStops, 16 * s, 0.35, false, x + 2 * s, 6, z - 1), 2.1, 0.35, { grow: 13 * s, vy: 4 });
+    // Point-light flash that decays with the fireball.
+    const light = new this.THREE.PointLight(0xff8a2a, 6, 30, 2);
+    light.position.set(x, 3, z);
+    this.scene.add(light);
+    this._add(light, 0.5, 0, { light, baseIntensity: 6 });
   }
 
-  // Bright muzzle flash at the gun (x, y, z are world coords).
+  // Muzzle flash at (x, y, z): one hot core sprite + a short light pop.
   muzzle(x, y, z) {
-    const g = new this.THREE.Group();
-    const soft = this._glowTexture([[0, 'rgba(255,255,255,1)'], [0.4, 'rgba(255,255,255,0.7)'], [1, 'rgba(255,255,255,0)']]);
-    // Small flash: the old 12-unit halo sat ~10m from the camera and
-    // filled the frame, whiting out the combat shot.
-    const flash = this._sprite(soft, 0xfff2a8, 1.0, 2.5);
-    const halo = this._sprite(soft, 0xffc23a, 0.5, 5);
-    g.add(flash);
-    g.add(halo);
-    const light = new this.THREE.PointLight(0xffd76a, 18, 14, 1.8);
-    g.add(light);
-    g.position.set(x, y, z);
-    this._register(g, 0.35, 'muzzle', light);
+    const stops = [[0, 'rgba(255,242,180,1)'], [0.4, 'rgba(255,200,90,0.9)'], [1, 'rgba(255,140,20,0)']];
+    this._add(this._sprite(stops, 4.0, 0.95, true, x, y, z), 0.12, 0.95, { grow: 6 });
+    const light = new this.THREE.PointLight(0xffe9a0, 22, 18, 2);
+    light.position.set(x, y, z);
+    this.scene.add(light);
+    this._add(light, 0.1, 0, { light, baseIntensity: 22 });
   }
 
-  // Small bright impact sparks.
+  // Impact sparks: a burst of small hot flecks that fly out and fall.
   sparks(x, y, z) {
-    const g = new this.THREE.Group();
-    const soft = this._glowTexture([[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,0.5)'], [1, 'rgba(255,255,255,0)']]);
+    const stops = [[0, 'rgba(255,240,170,1)'], [0.5, 'rgba(255,180,60,0.9)'], [1, 'rgba(255,120,20,0)']];
     for (let i = 0; i < 6; i++) {
-      const sp = this._sprite(soft, 0xffd76a, 0.9, 3 + Math.random() * 3);
-      sp.position.set((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 3);
-      g.add(sp);
+      const a = Math.random() * Math.PI * 2;
+      const sp = 4 + Math.random() * 7;
+      const s = this._sprite(stops, 0.9, 0.9, true, x, y, z);
+      this._add(s, 0.45 + Math.random() * 0.15, 0.9, {
+        vx: Math.cos(a) * sp, vy: 2 + Math.random() * 5, vz: Math.sin(a) * sp
+      });
     }
-    const light = new this.THREE.PointLight(0xffc23a, 18, 16, 1.8);
-    g.add(light);
-    g.position.set(x, y, z);
-    this._register(g, 0.45, 'sparks', light);
   }
 
-  // Rising dark smoke puffs.
+  // Dark smoke puffs that rise and swell.
   smoke(x, y, z) {
-    const g = new this.THREE.Group();
-    const soft = this._glowTexture([[0, 'rgba(255,255,255,0.8)'], [0.6, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
-    for (let i = 0; i < 4; i++) {
-      const sm = this._sprite(soft, 0x3a2a22, 0.5, 8 + Math.random() * 6, this.THREE.NormalBlending);
-      sm.position.set((Math.random() - 0.5) * 4, i * 2.5, (Math.random() - 0.5) * 4);
-      g.add(sm);
-    }
-    g.position.set(x, y, z);
-    this._register(g, 2.0, 'smoke', null);
+    const stops = [[0, 'rgba(45,32,28,0.9)'], [0.6, 'rgba(40,30,28,0.55)'], [1, 'rgba(35,28,28,0)']];
+    this._add(this._sprite(stops, 8, 0.5, false, x, y, z), 1.6, 0.5, { grow: 6, vy: 3 });
+    this._add(this._sprite(stops, 11, 0.45, false, x + 1.5, y + 1.5, z - 1), 1.8, 0.45, { grow: 7, vy: 3.5 });
   }
 
+  // Advance every live part: fade, grow, drift, remove the dead, decay lights.
   update(dt) {
-    for (let i = this.active.length - 1; i >= 0; i--) {
-      const e = this.active[i];
-      e.life += dt;
-      const t = e.life / e.maxLife;
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i];
+      p.life += dt;
+      const t = p.life / p.maxLife;
       if (t >= 1) {
-        this.scene.remove(e.group);
-        e.group.traverse((o) => {
-          if (o.material) {
-            if (o.material.map) o.material.map.dispose();
-            o.material.dispose();
-          }
-        });
-        this.active.splice(i, 1);
+        this.scene.remove(p.obj);
+        if (p.obj.material) p.obj.material.dispose();
+        this.parts.splice(i, 1);
         continue;
       }
-      // Grow slightly, hold full brightness for the first 25% of life, then fade.
-      const grow = 1 + t * 0.9;
-      e.group.scale.set(grow, grow, grow);
-      const fade = t < 0.25 ? 1 : 1 - (t - 0.25) / 0.75;
-      e.group.traverse((o) => {
-        if (o.isSprite) o.material.opacity = (o.userData.baseOpacity ?? 1) * fade;
-      });
-      if (e.light) e.light.intensity = e.lightBase * fade;
-      if (e.kind === 'smoke') e.group.position.y += dt * 2.5;
+      const fade = 1 - t;
+      if (p.light) {
+        p.obj.intensity = p.baseIntensity * fade;
+        continue;
+      }
+      p.obj.material.opacity = p.baseOpacity * fade;
+      if (p.grow) {
+        p.obj.scale.x += p.grow * dt;
+        p.obj.scale.y += p.grow * dt;
+      }
+      if (p.vx || p.vy || p.vz) {
+        p.obj.position.x += p.vx * dt;
+        p.obj.position.y += p.vy * dt;
+        p.obj.position.z += p.vz * dt;
+        // Sparks fall; smoke keeps rising.
+        if (p.baseOpacity >= 0.9 && p.maxLife < 1) p.vy -= 14 * dt;
+      }
     }
   }
 }
