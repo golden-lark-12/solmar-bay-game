@@ -11,88 +11,125 @@ http://localhost:8080) and play with keyboard and mouse.
 
 ## The story — "The Debt"
 
-Ria Solano, getaway driver, owes Don Rafael Alba forty grand. Eight jobs
-stand between her and freedom:
+Ria Solano owes Don Rafael Alba $40,000. Drive, steal, race and fight your
+way out of the debt across five districts of Puerto Alba, from Marina Row to
+the island club, with the whole Alba police department on your tail.
 
-| # | Job | Giver |
-|---|-----|-------|
-| M1 | Hot Wheels | Marco "Wrench" Vela |
-| M2 | The Drop | Lena Cruz |
-| M3 | Causeway Run | Dario Font |
-| M4 | Harbor Lights | Sofia Marin |
-| M5 | The Vault Job | Elias "Ledger" Prado |
-| M6 | Ghost in the Machine | Mina Okafor |
-| M7 | Payback at the Docks | Tito Rivas |
-| M8 | The Debt Paid | Don Rafael Alba |
+## The 12 jobs
 
-Each job pays cash and respect points (RP). Respect raises Ria's rank —
-Wheelman, Getaway Driver, Street Legend, Ghost of Alba, Queen of the
-Causeway — and finishing jobs unlocks new weapons. Her crew of three
-travels with her: Jax the getaway driver, Mina the hacker, and Tito the
-muscle, each with an ability on a cooldown (Z / X / C).
+| Job | Name | Giver | District |
+| --- | --- | --- | --- |
+| M1 | Hot Wheels | Kiki Maro, Wheelwoman | Marina Row |
+| M2 | The Drop | Lena Kade, Fixer | Marina Row |
+| M3 | Causeway Run | Dario Voss, Wheelman | Causeway |
+| M4 | Marina Lights | Sable Quinn, Marina Owner | Marina Row |
+| M5 | Commerce Row Heat | Marco Venn, Fixer | Commerce Row |
+| M6 | Island Lights | Iris Vale, Club Owner | The Island |
+| M7 | Payback at the Docks | Don Rafael Alba, Don of Alba | Marina Row |
+| M8 | The Debt Paid | Don Rafael Alba, Don of Alba | The Strand |
+| M9 | Strand Grand Prix | Rex Calder, Race Promoter | The Strand |
+| M10 | Tune-Up for Alba | Gus Ferran, Garage Mechanic | Marina Row |
+| M11 | The Luna Vault | Sable Quinn, Marina Owner | The Strand |
+| M12 | Alba's Last Call | Don Rafael Alba, Don of Alba | The Island |
+
+Press M to start the next job. Each job pays cash and RP, and some unlock
+new weapons. Finish M8 to pay the debt — then M12 closes the story.
+
+## Crew
+
+Three crew members ride with you, each with one ability on a cooldown:
+
+- **Kiki Maro** (KM) — Slipstream, key Z, 25s cooldown. A burst of speed.
+- **Lena Kade** (LK) — Loop Feeds, key X, 30s cooldown. Drops one wanted star.
+- **Dario Voss** (DV) — Ram, key C, 20s cooldown. Wrecks the nearest cruiser.
+
+## Ranks
+
+Earn RP from jobs and races to climb the ladder:
+
+- Wheelman — 0 RP
+- Street Hustler — 250 RP
+- Fixer — 550 RP
+- Ghost of Alba — 900 RP
+- King of Alba — 1400 RP
 
 ## What is in the game
 
-- A full 3D city at golden hour: avenues, towers with lit windows, a beach
-  with palms and umbrellas, a bay, and a causeway to an island — built with
-  vendored three.js 0.160.0 (`game/vendor/three.min.js`).
-- On foot and by car: steal any parked car (E), drive with arcade physics,
-  car condition and damage.
-- Traffic that loops the avenues and pedestrians who stroll the sidewalks —
-  and run when trouble starts.
-- Wanted level 0–5 with the Alba PD: pursuit cars that flank and ram,
-  roadblocks, and Air One, the police helicopter with a searchlight.
-- Combat: six weapon slots (fists, pistol, SMG, shotgun, rifle, launcher)
-  with ammo, reloads and locked states.
-- A dense HUD: wanted stars, cash, health/armor, respect and rank, the Alba
-  PD dispatch panel with named units and distances, a minimap with a gold
-  route line, weapon slots, a dialogue box, stage bars, a timer, the radio
-  station, car condition and the crew panel.
-- Start screen, pause menu, localStorage saves, and a fully synthesized
-  WebAudio soundtrack: engine hum, sirens, gunshots, booms and radio
-  jingles. No audio files.
+- **Garage shop** — Alba Garage sells the Nitro Kit, Engine Tune and Armor
+  Plating. Park near the garage and press G to buy.
+- **Street races** — the Strand Grand Prix (M9): seven gates, three rivals,
+  best time saved on the board.
+- **Districts + standing** — five districts (The Strand, Marina Row,
+  Commerce Row, Causeway, The Island). Standing rises as you work each
+  district.
+- **Nitro boost** — hold Shift with the Nitro Kit installed to burn the
+  nitro meter for a big speed boost.
+- **Weapon wheel** — hold Tab and pick 1-6 to swap weapons mid-fight.
+- **Police heat** — a five-star wanted system with pursuit cruisers,
+  roadblocks and the CONDOR-1 helicopter with its spotlight.
+- **Radio** — ALBA FM 98.1, "Golden Hour Drive" and more.
+- **Landmarks** — the ferris wheel on the pier, Casino Luna, the island
+  clubhouse, the lighthouse, and the beach at golden hour.
+
+## Weapons
+
+| Weapon | Ammo | Unlock |
+| --- | --- | --- |
+| Pistol | 120 | start |
+| SMG | 240 | start |
+| Pump Shotgun | 48 | M3 Causeway Run |
+| Carbine | 180 | M5 Commerce Row Heat |
+| Grenade Launcher | 12 | M7 Payback at the Docks |
+| Sniper | 20 | M11 The Luna Vault |
 
 ## Controls
 
-- WASD / arrows — drive or move (Shift to sprint on foot)
-- E — steal a car / exit a car
-- Mouse drag — orbit the camera; click — shoot
-- 1–6 — weapons, R — reload
-- Z / X / C — crew abilities (Slipstream, Loop Feeds, Ram)
-- J — start the next job, V — change radio station, H — horn
-- M — mute, P / Esc — pause
+- WASD / Arrows — drive & walk
+- E — steal / enter car
+- Shift — nitro boost (with Nitro Kit)
+- Mouse click — shoot
+- Tab (hold) — weapon wheel
+- F — swap weapon
+- Z / X / C — crew abilities
+- G — garage shop (near Alba Garage)
+- M — start next job
+- P — pause
 
 ## Files
 
-- `game/index.html` — the page and the whole HUD layout
-- `game/src/utils.js` — math, formatting and DOM helpers
-- `game/src/save.js` — localStorage saves
-- `game/src/audio.js` — synthesized WebAudio sound
-- `game/src/input.js` — keyboard and mouse
-- `game/src/city.js` — the city, beach, causeway, collision
-- `game/src/vehicle.js` — cars and arcade driving
-- `game/src/traffic.js` — ambient traffic
-- `game/src/pedestrians.js` — sidewalk crowds
-- `game/src/player.js` — Ria on foot
-- `game/src/police.js` — wanted level, pursuit, helicopter, roadblocks
-- `game/src/combat.js` — weapons, ammo, hit tests
-- `game/src/effects.js` — explosions, smoke, sparks, camera shake
-- `game/src/missions.js` — the eight story jobs
-- `game/src/hud.js` — HUD, dispatch panel, minimap, dialogue
-- `game/src/ui.js` — start / pause / busted screens
-- `game/src/main.js` — boot, game loop, camera, screenshot staging
-- `main.ts` — hands the game in: copies `game/` and `screenshots/` to
-  `/output` and writes `/output/dossier.json`
-- `serve.ts` — tiny static dev server
+```
+game/
+  index.html        entry point, HUD + screen styles
+  src/
+    main.js         boot, game loop, camera, screenshot staging
+    city.js         the city: roads, buildings, beach, water, sun, signs
+    hud.js          HUD: cash, rank, mission panel, dispatch, minimap
+    police.js       wanted levels, cruisers, dispatch, helicopter
+    vehicle.js      cars: body, glass cabin, wheels, light bars
+    player.js       Ria on foot
+    traffic.js      traffic cars
+    pedestrians.js  pedestrians
+    missions.js     the 12 jobs, ranks, stages
+    races.js        street races, checkpoints, best times
+    districts.js    the 5 districts + standing
+    garage.js       garage shop + upgrades
+    combat.js       weapons, firing, wheel selection
+    effects.js      explosions, muzzle flashes, sparks, smoke
+    ui.js           start / pause / end screens
+    input.js        keyboard + mouse
+    audio.js        engine, sirens, radio, sound effects
+    save.js         save / load
+    utils.js        math helpers
+  vendor/
+    three.min.js    Three.js
+```
 
 ## Screenshots
 
-`screenshots/` holds four renders of the game itself, staged with `?shot=`
-parameters: 1-chase (the cover: golden-hour pursuit with Air One overhead),
-2-steal, 3-mission, 4-vista.
+- `screenshots/1-chase.jpg` — the M8 getaway chase on the Strand
+- `screenshots/2-briefing.jpg` — the briefing for the final job
+- `screenshots/3-combat.jpg` — on-foot combat, weapon wheel open
+- `screenshots/4-vista.jpg` — the city, the pier and the water at sunset
 
-## Originality
-
-Puerto Alba, Ria Solano, the Alba PD, the crew and every job are original
-creations for this entry. Nothing here copies any commercial game — no
-names, characters, maps, art or music from any other title.
+Take fresh ones with `node take-shots.mjs`. Run the full playtest with
+`node playtest.mjs`.
