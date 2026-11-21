@@ -1,250 +1,252 @@
-// vehicle.js — Puerto Alba cars. Boxy stylized cars with light glass cabins,
-// headlights, taillights, wheels, optional spoiler / police light bar / driver.
+// vehicle.js — Puerto Alba car factory + driving model.
+// Boxy stylized cars: body, dark glass cabin, box lights, cylinder wheels,
+// optional spoiler / police light bar / driver silhouette.
+
 import { pick } from './utils.js';
 
-export const CAR_NAMES = [
-  'Alba Cruiser', 'Comet GT', 'Marina Coupe', 'Island Cabrio',
-  'Dune Buggy', 'Causeway Hauler', 'Strand Runner', 'Casino Limo',
-];
+export const CAR_NAMES = ['Alba Cruiser', 'Comet GT', 'Marina Coupe', 'Island Cabrio', 'Dune Buggy', 'Causeway Hauler', 'Strand Runner', 'Casino Limo'];
 
-const PAINT = [
-  0xff6a1e, 0x2ad8c8, 0xff4a6a, 0xffd76a, 0x7ad8ff, 0xb46aff,
-  0x3ad86a, 0xf2f2f2, 0x8a6a3a, 0xc96f4a, 0x2a4a8a, 0xd8d8d8,
-];
+const PAINT = [0xff6a1e, 0x2ad8c8, 0xff4a6a, 0xffd76a, 0x7ad8ff, 0xb46aff, 0x3ad86a, 0xf2f2f2, 0x8a6a3a, 0xc96f4a, 0x2a4a8a, 0xd8d8d8];
 
 export function randomCarColor() {
   return pick(PAINT);
 }
 
+function angDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function keyDown(input, code) {
+  if (!input) return false;
+  if (typeof input.isDown === 'function') return !!input.isDown(code);
+  if (input.keys && typeof input.keys.has === 'function') return input.keys.has(code);
+  if (input.keys && Array.isArray(input.keys)) return input.keys.includes(code);
+  return !!input[code];
+}
+
+function inputFlag(input, codes, props) {
+  for (const c of codes) if (keyDown(input, c)) return true;
+  if (!input) return false;
+  for (const p of props) if (input[p]) return true;
+  return false;
+}
+
 function box(THREE, w, h, d, color, opts) {
+  const o = opts || {};
   const mat = new THREE.MeshStandardMaterial({
-    color,
-    roughness: opts && opts.roughness !== undefined ? opts.roughness : 0.55,
-    metalness: opts && opts.metalness !== undefined ? opts.metalness : 0.25,
-    transparent: !!(opts && opts.transparent),
-    opacity: opts && opts.opacity !== undefined ? opts.opacity : 1,
-    emissive: opts && opts.emissive !== undefined ? opts.emissive : 0x000000,
-    emissiveIntensity: opts && opts.emissiveIntensity !== undefined ? opts.emissiveIntensity : 1,
+    color: color,
+    roughness: o.roughness !== undefined ? o.roughness : 0.55,
+    metalness: o.metalness !== undefined ? o.metalness : 0.25,
+    transparent: !!o.transparent,
+    opacity: o.opacity !== undefined ? o.opacity : 1,
+    emissive: o.emissive || 0,
+    emissiveIntensity: o.emissiveIntensity !== undefined ? o.emissiveIntensity : 1
   });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  if (opts && opts.name) m.name = opts.name;
-  return m;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  if (o.name) mesh.name = o.name;
+  return mesh;
 }
 
 export function makeCarMesh(THREE, color, opts) {
-  opts = opts || {};
+  const o = opts || {};
   const g = new THREE.Group();
-  // Main body.
+
+  // Main body: long box, low and wide.
   const body = box(THREE, 2.1, 0.75, 4.6, color, { name: 'body' });
-  body.position.y = 0.55;
+  body.position.set(0, 0.55, 0);
   g.add(body);
-  // Nose + tail trim.
-  const nose = box(THREE, 2.0, 0.3, 0.35, color, { name: 'body' });
-  nose.position.set(0, 0.42, 2.32);
-  g.add(nose);
-  // Cabin: LIGHT blue-grey glass, semi-transparent, so it reads as a
-  // windshield / cabin instead of a black box on the roof.
-  const cabin = box(THREE, 1.7, 0.62, 2.1, 0x9fc4d8, {
-    name: 'cabin', transparent: true, opacity: 0.72, roughness: 0.15, metalness: 0.45,
-  });
-  cabin.position.set(0, 1.2, -0.25);
+
+  // Dark glass cabin, set slightly back.
+  const cabin = box(THREE, 1.7, 0.55, 2.0, 0x182838, { roughness: 0.25, metalness: 0.6, name: 'cabin' });
+  cabin.position.set(0, 1.15, -0.3);
   g.add(cabin);
-  // Roof panel (thin, body color) so the cabin reads as glass under a roof.
-  const roof = box(THREE, 1.75, 0.08, 1.5, color, { name: 'body' });
-  roof.position.set(0, 1.54, -0.25);
-  g.add(roof);
-  // Headlights.
-  const hl = new THREE.MeshStandardMaterial({ color: 0xfff6c8, emissive: 0xffedb0, emissiveIntensity: 0.9 });
+
+  // Headlights (front, +Z) — warm white, slightly emissive.
   for (const sx of [-0.7, 0.7]) {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.1), hl);
-    h.position.set(sx, 0.55, 2.34);
-    h.name = 'headlight';
-    g.add(h);
+    const hl = box(THREE, 0.35, 0.18, 0.1, 0xfff2c8, { emissive: 0xfff2c8, emissiveIntensity: 0.9, name: 'headlight' });
+    hl.position.set(sx, 0.55, 2.32);
+    g.add(hl);
   }
-  // Taillights.
-  const tl = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xaa0000, emissiveIntensity: 0.9 });
+
+  // Taillights (rear, -Z) — red.
   for (const sx of [-0.7, 0.7]) {
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.1), tl);
-    t.position.set(sx, 0.55, -2.34);
-    t.name = 'taillight';
-    g.add(t);
+    const tl = box(THREE, 0.35, 0.18, 0.1, 0xff2a2a, { emissive: 0xff2a2a, emissiveIntensity: 0.8, name: 'taillight' });
+    tl.position.set(sx, 0.55, -2.32);
+    g.add(tl);
   }
-  // Wheels.
-  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12);
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 });
-  const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.32, 8);
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.35, metalness: 0.7 });
-  for (const [wx, wz] of [[-1.0, 1.45], [1.0, 1.45], [-1.0, -1.45], [1.0, -1.45]]) {
+
+  // Wheels: dark cylinders, axle along X.
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 14);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.9, metalness: 0.1 });
+  for (const [wx, wz] of [[-1.0, 1.5], [1.0, 1.5], [-1.0, -1.5], [1.0, -1.5]]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.z = Math.PI / 2;
     w.position.set(wx, 0.42, wz);
     w.name = 'wheel';
     g.add(w);
-    const hub = new THREE.Mesh(hubGeo, hubMat);
-    hub.rotation.z = Math.PI / 2;
-    hub.position.set(wx, 0.42, wz);
-    hub.name = 'wheel';
-    g.add(hub);
   }
-  // Spoiler.
-  if (opts.spoiler) {
-    const sp = box(THREE, 1.9, 0.08, 0.5, 0x1a1a1a, { name: 'spoiler' });
-    sp.position.set(0, 1.15, -2.15);
-    g.add(sp);
-    for (const sx of [-0.8, 0.8]) {
-      const leg = box(THREE, 0.08, 0.35, 0.08, 0x1a1a1a, { name: 'spoiler' });
-      leg.position.set(sx, 0.95, -2.15);
-      g.add(leg);
+
+  // Spoiler: thin blade on two struts at the rear.
+  if (o.spoiler) {
+    const blade = box(THREE, 1.9, 0.08, 0.5, color, { name: 'spoiler' });
+    blade.position.set(0, 1.08, -2.1);
+    g.add(blade);
+    for (const sx of [-0.7, 0.7]) {
+      const strut = box(THREE, 0.08, 0.28, 0.08, 0x222222, { name: 'spoiler-strut' });
+      strut.position.set(sx, 0.9, -2.1);
+      g.add(strut);
     }
   }
-  // Police light bar: red left, blue right.
-  if (opts.police) {
-    const bar = box(THREE, 1.5, 0.16, 0.4, 0x222222, { name: 'lightbar' });
-    bar.position.set(0, 1.62, -0.25);
-    g.add(bar);
-    const red = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff0000, emissiveIntensity: 1.4 });
-    const blue = new THREE.MeshStandardMaterial({ color: 0x2a6aff, emissive: 0x0033ff, emissiveIntensity: 1.4 });
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.2, 0.42), red);
-    r.position.set(-0.38, 1.62, -0.25);
-    r.name = 'lightbar-red';
-    g.add(r);
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.2, 0.42), blue);
-    b.position.set(0.38, 1.62, -0.25);
-    b.name = 'lightbar-blue';
-    g.add(b);
+
+  // Police light bar: dark base with red / blue halves on the cabin roof.
+  if (o.police) {
+    const base = box(THREE, 1.2, 0.12, 0.4, 0x222222, { name: 'lightbar-base' });
+    base.position.set(0, 1.5, -0.3);
+    g.add(base);
+    const red = box(THREE, 0.55, 0.16, 0.42, 0xff2a2a, { emissive: 0xff2a2a, emissiveIntensity: 1.2, name: 'lightbar-red' });
+    red.position.set(-0.3, 1.54, -0.3);
+    g.add(red);
+    const blue = box(THREE, 0.55, 0.16, 0.42, 0x2a6aff, { emissive: 0x2a6aff, emissiveIntensity: 1.2, name: 'lightbar-blue' });
+    blue.position.set(0.3, 1.54, -0.3);
+    g.add(blue);
   }
-  // Driver silhouette in the cabin (visible from a 3/4 rear angle).
-  if (opts.driver) {
-    const suit = new THREE.MeshStandardMaterial({ color: 0x2a2a34, roughness: 0.85 });
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.35), suit);
-    torso.position.set(-0.35, 1.05, -0.15);
-    torso.name = 'driver';
+
+  // Driver silhouette: dark torso + skin-tone head, left seat.
+  if (o.driver) {
+    const torso = box(THREE, 0.5, 0.55, 0.3, 0x2a2a2a, { name: 'driver-torso' });
+    torso.position.set(-0.4, 1.15, 0.1);
     g.add(torso);
-    const skin = new THREE.MeshStandardMaterial({ color: 0xe8b088, roughness: 0.7 });
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skin);
-    head.position.set(-0.35, 1.48, -0.15);
-    head.name = 'driver';
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xd8a878, roughness: 0.7 })
+    );
+    head.position.set(-0.4, 1.58, 0.1);
+    head.name = 'driver-head';
     g.add(head);
-    const hair = new THREE.MeshStandardMaterial({ color: 0x1a1210, roughness: 0.9 });
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.23, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
-    cap.position.set(-0.35, 1.5, -0.15);
-    cap.name = 'driver';
-    g.add(cap);
   }
+
   return g;
 }
 
 export class Car {
   constructor(THREE, scene, opts) {
-    opts = opts || {};
+    const o = opts || {};
     this.THREE = THREE;
     this.scene = scene;
-    this.name = opts.name || 'Alba Cruiser';
-    this.color = opts.color !== undefined ? opts.color : 0xff6a1e;
+    this.name = o.name || 'Alba Cruiser';
+    this.color = o.color !== undefined && o.color !== null ? o.color : 0xff6a1e;
     this.mesh = makeCarMesh(THREE, this.color, {
-      police: !!opts.isPolice,
-      spoiler: !!opts.spoiler,
-      driver: !!opts.driver,
+      police: !!o.isPolice,
+      spoiler: !!o.spoiler,
+      driver: !!o.driver
     });
-    this.mesh.position.set(opts.x || 0, 0, opts.z || 0);
-    this.heading = opts.heading || 0;
-    this.mesh.rotation.y = this.heading;
+    this.x = o.x || 0;
+    this.z = o.z || 0;
+    this.heading = o.heading || 0;
     this.speed = 0;
-    this.topSpeed = opts.topSpeed || 32;
-    this.accel = opts.accel || 16;
+    this.topSpeed = o.topSpeed || 32;
+    this.accel = o.accel || 16;
     this.condition = 100;
-    this.health = 100;
-    this.isPlayer = !!opts.isPlayer;
-    this.isPolice = !!opts.isPolice;
-    this.isRival = !!opts.isRival;
-    this.burning = false;
     this.nitro = 100;
     this.nitroActive = false;
     this.slipstream = 0;
-    scene.add(this.mesh);
+    this.isPlayer = !!o.isPlayer;
+    this.mesh.position.set(this.x, 0, this.z);
+    this.mesh.rotation.y = this.heading;
+    if (scene) scene.add(this.mesh);
   }
 
-  get x() { return this.mesh.position.x; }
-  get z() { return this.mesh.position.z; }
-
   setPos(x, z, heading) {
-    this.mesh.position.x = x;
-    this.mesh.position.z = z;
-    if (heading !== undefined) {
-      this.heading = heading;
-      this.mesh.rotation.y = heading;
-    }
+    this.x = x;
+    this.z = z;
+    if (heading !== undefined && heading !== null) this.heading = heading;
+    this.mesh.position.set(this.x, 0, this.z);
+    this.mesh.rotation.y = this.heading;
   }
 
   damage(amount) {
-    this.condition = Math.max(0, this.condition - amount);
-    this.health = this.condition;
-    if (this.condition <= 25) this.burning = true;
-    return this.condition;
+    this.condition = Math.max(0, this.condition - (amount || 0));
   }
 
   repair() {
     this.condition = 100;
-    this.health = 100;
-    this.burning = false;
   }
 
   update(dt, input, nitroOwned) {
-    // Input exposes throttle/steer/nitro as value properties (not methods).
-    const throttle = input
-      ? (typeof input.throttle === 'function' ? input.throttle() : (input.throttle || 0))
-      : 0;
-    const steer = input
-      ? (typeof input.steer === 'function' ? input.steer() : (input.steer || 0))
-      : 0;
-    const nitroDown = input
-      ? (typeof input.nitro === 'function' ? input.nitro() : !!input.nitro)
-      : false;
-    const wantNitro = !!(nitroOwned && nitroDown && throttle > 0 && this.nitro > 1);
-    this.nitroActive = wantNitro;
+    const fwd = inputFlag(input, ['KeyW', 'ArrowUp'], ['forward', 'up']);
+    const back = inputFlag(input, ['KeyS', 'ArrowDown'], ['back', 'down']);
+    const left = inputFlag(input, ['KeyA', 'ArrowLeft'], ['left']);
+    const right = inputFlag(input, ['KeyD', 'ArrowRight'], ['right']);
+    const nitroKey = inputFlag(input, ['ShiftLeft', 'ShiftRight'], ['nitro', 'boost']);
+
     let top = this.topSpeed;
-    if (wantNitro) top *= 1.5;
-    if (this.slipstream > 0) { top *= 1.25; this.slipstream = Math.max(0, this.slipstream - dt); }
-    const target = throttle * top;
-    let rate = throttle !== 0 ? this.accel : this.accel * 1.6;
-    if (wantNitro) rate *= 1.8; // nitro punches hard off the line.
-    if (this.speed < target) this.speed = Math.min(target, this.speed + rate * dt);
-    else if (this.speed > target) this.speed = Math.max(target, this.speed - rate * dt);
-    if (wantNitro) this.nitro = Math.max(0, this.nitro - 30 * dt);
-    else this.nitro = Math.min(100, this.nitro + 8 * dt);
-    const spd = Math.abs(this.speed);
-    if (spd > 0.3) {
-      const turn = 2.3 * Math.min(1, spd / 9) * (this.speed < 0 ? -1 : 1);
-      this.heading += steer * turn * dt;
+    this.nitroActive = false;
+    if (nitroKey && nitroOwned && this.nitro > 0 && fwd) {
+      top = this.topSpeed * 1.55;
+      this.nitro = Math.max(0, this.nitro - dt * 28);
+      this.nitroActive = true;
+    } else if (!nitroKey) {
+      this.nitro = Math.min(100, this.nitro + dt * 3);
     }
-    const fx = Math.sin(this.heading);
-    const fz = Math.cos(this.heading);
-    this.mesh.position.x += fx * this.speed * dt;
-    this.mesh.position.z += fz * this.speed * dt;
+    if (this.slipstream > 0) {
+      this.slipstream -= dt;
+      top = top * 1.25;
+    }
+
+    let target = 0;
+    if (fwd) target = top;
+    if (back) target = -this.topSpeed * 0.45;
+    // Nitro is a boost: it raises the top speed AND the acceleration, so
+    // the car actually reaches the higher speed inside a short burst.
+    const acc = this.nitroActive ? this.accel * 1.8 : this.accel;
+    if (this.speed < target) {
+      this.speed = Math.min(target, this.speed + acc * dt);
+    } else if (this.speed > target) {
+      this.speed = Math.max(target, this.speed - this.accel * 1.6 * dt);
+    }
+    if (!fwd && !back) {
+      const s = Math.sign(this.speed);
+      this.speed -= s * Math.min(Math.abs(this.speed), 14 * dt);
+    }
+
+    const steer = (left ? 1 : 0) - (right ? 1 : 0);
+    if (steer !== 0 && Math.abs(this.speed) > 0.5) {
+      this.heading += steer * 2.0 * dt * Math.min(1, Math.abs(this.speed) / 10) * Math.sign(this.speed);
+    }
+    // Keep the heading wrapped so long drives don't grow it unbounded.
+    while (this.heading > Math.PI) this.heading -= Math.PI * 2;
+    while (this.heading < -Math.PI) this.heading += Math.PI * 2;
+
+    this.x += Math.sin(this.heading) * this.speed * dt;
+    this.z += Math.cos(this.heading) * this.speed * dt;
+    this.mesh.position.set(this.x, 0, this.z);
     this.mesh.rotation.y = this.heading;
-    this.mesh.position.x = Math.max(-300, Math.min(300, this.mesh.position.x));
-    this.mesh.position.z = Math.max(-300, Math.min(560, this.mesh.position.z));
   }
 
   chase(dt, tx, tz, topSpeed) {
     const dx = tx - this.x;
     const dz = tz - this.z;
-    const want = Math.atan2(dx, dz);
-    let diff = want - this.heading;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    this.heading += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff));
-    const top = topSpeed || this.topSpeed;
     const dist = Math.hypot(dx, dz);
-    const target = dist > 4 ? top : top * 0.4;
-    if (this.speed < target) this.speed = Math.min(target, this.speed + this.accel * dt);
-    else this.speed = Math.max(target, this.speed - this.accel * dt);
-    this.mesh.position.x += Math.sin(this.heading) * this.speed * dt;
-    this.mesh.position.z += Math.cos(this.heading) * this.speed * dt;
+    const want = Math.atan2(dx, dz);
+    const diff = angDiff(this.heading, want);
+    const turn = Math.max(-1, Math.min(1, diff * 2));
+    this.heading += turn * 2.2 * dt;
+    const top = topSpeed || this.topSpeed;
+    if (dist > 6) {
+      this.speed = Math.min(top, this.speed + this.accel * dt);
+    } else {
+      this.speed = Math.max(0, this.speed - this.accel * dt);
+    }
+    this.x += Math.sin(this.heading) * this.speed * dt;
+    this.z += Math.cos(this.heading) * this.speed * dt;
+    this.mesh.position.set(this.x, 0, this.z);
     this.mesh.rotation.y = this.heading;
   }
 
   dispose() {
-    if (this.scene) this.scene.remove(this.mesh);
+    if (this.scene && this.mesh) this.scene.remove(this.mesh);
   }
 }

@@ -1,5 +1,9 @@
-// main.js — Puerto Alba game: boot, loop, driving, missions, police, combat,
-// garage shop, crew abilities, races, save/load, and screenshot staging.
+// main.js — Puerto Alba: open-world coastal crime game.
+// Ria Solano, getaway driver. Story arc "The Debt": 12 jobs, crew, ranks,
+// garage + nitro, street races, districts + standing, police wanted 0-5
+// with helicopter, combat, save/load. Staged shots via ?shot=chase|briefing|
+// combat|vista &seed=7. Shot staging, HUD data and the game loop live here.
+
 import { clamp, angleLerp, angleDiff } from './utils.js';
 import { WORLD, buildCity, collideCircle } from './city.js';
 import { Districts } from './districts.js';
@@ -26,9 +30,9 @@ const TIERS = [
   { name: 'Street Hustler', rp: 250 },
   { name: 'Fixer', rp: 550 },
   { name: 'Ghost of Alba', rp: 900 },
-  { name: 'King of Alba', rp: 1400 },
+  { name: 'King of Alba', rp: 1400 }
 ];
-const LADDER = (Array.isArray(RANKS) && RANKS.length
+const LADDER = (RANKS && RANKS.length
   ? RANKS.map((r) => (typeof r === 'string' ? r : r.name))
   : TIERS.map((t) => t.name));
 
@@ -42,29 +46,38 @@ const SPEAKERS = {
   'Marco': { name: 'Marco Venn', role: 'Fixer', color: '#8a6a3a', skin: '#d8b090', hair: '#3a2a1a' },
   'Iris': { name: 'Iris Vale', role: 'Club Owner', color: '#ff7ad8', skin: '#f2c8a0', hair: '#ff7ad8' },
   'Rex': { name: 'Rex Calder', role: 'Race Promoter', color: '#ffd76a', skin: '#e8b088', hair: '#ffd76a' },
-  'Gus': { name: 'Gus Ferran', role: 'Garage Mechanic', color: '#9a9a9a', skin: '#d8a878', hair: '#9a9a9a' },
+  'Gus': { name: 'Gus Ferran', role: 'Garage Mechanic', color: '#9a9a9a', skin: '#d8a878', hair: '#9a9a9a' }
 };
 
+const CREW = [
+  { name: 'Kiki Maro', initials: 'KM', color: '#2ad8c8', ability: 'Slipstream', key: 'Z', cooldown: 0, cooldownMax: 25, ready: true, skin: '#d8a878', hair: '#2ad8c8' },
+  { name: 'Lena Kade', initials: 'LK', color: '#ff4a6a', ability: 'Loop Feeds', key: 'X', cooldown: 0, cooldownMax: 30, ready: true, skin: '#f2c8a0', hair: '#ff4a6a' },
+  { name: 'Dario Voss', initials: 'DV', color: '#ff8a2a', ability: 'Ram', key: 'C', cooldown: 0, cooldownMax: 20, ready: true, skin: '#c89878', hair: '#ff8a2a' }
+];
+
 function formatClock(t) {
-  const h24 = Math.floor(t) % 24;
-  const m = Math.floor((t - Math.floor(t)) * 60);
-  const ap = h24 >= 12 ? 'PM' : 'AM';
-  let h = h24 % 12;
-  if (h === 0) h = 12;
-  return h + ':' + String(m).padStart(2, '0') + ' ' + ap;
+  const total = Math.max(0, Math.floor(t || 0));
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
 }
 
 export class Game {
   constructor() {
+    const params = new URLSearchParams(window.location.search);
+    this.shot = params.get('shot');
+    this.shotSeed = parseInt(params.get('seed') || '7', 10) || 7;
+    this.shotMode = this.shot || null;
+
+    // Renderer / scene / camera.
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    document.getElementById('game').appendChild(this.renderer.domElement);
+    document.body.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
-    this.camera.position.set(60, 45, -40);
-    this.clock = new THREE.Clock();
-    this.camHeading = 0;
+    this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 3000);
+    this.camera.position.set(0, 60, 160);
+    this.camera.lookAt(0, 10, 100);
 
     // Golden-hour light.
     const hemi = new THREE.HemisphereLight(0xffd8b0, 0x8a5a3a, 0.95);
@@ -73,92 +86,93 @@ export class Game {
     sun.position.set(-300, 220, 300);
     this.scene.add(sun);
 
+    // World + systems.
     this.city = buildCity(THREE, this.scene);
-    this.colliders = this.city.colliders;
+    this.districts = new Districts();
+    this.districts.addStanding('The Strand', 62);
+    this.districts.addStanding('Marina Row', 48);
+    this.districts.addStanding('Commerce Row', 35);
+    this.districts.addStanding('Causeway', 41);
+    this.districts.addStanding('The Island', 28);
+    this.missions = new Missions(THREE, this.scene);
+    this.races = new Races(THREE, this.scene);
+    this.garage = new Garage();
+    this.combat = new Combat();
+    this.police = new Police(THREE, this.scene);
+    this.player = new Player(THREE, this.scene);
+    this.traffic = new Traffic(THREE, this.scene);
+    this.pedestrians = new Pedestrians(THREE, this.scene);
+    this.effects = new Effects(THREE, this.scene);
     this.hud = new Hud();
-    this.hud.build();
     this.ui = new Ui();
-    this.ui.onPlay = () => this.startGame(false);
-    this.ui.onContinue = () => this.startGame(true);
-    this.ui.onResume = () => this.resumeGame();
-    this.ui.onRestart = () => { this.save.clear(); window.location.reload(); };
+    this.save = new SaveSys();
     this.input = new Input();
     this.audio = new AudioSys();
-    this.save = new SaveSys();
-    this.effects = new Effects(THREE, this.scene);
-    this.traffic = new Traffic(THREE, this.scene, this.colliders);
-    this.pedestrians = new Pedestrians(THREE, this.scene);
-    this.police = new Police(THREE, this.scene, this.colliders);
-    this.missions = new Missions(THREE, this.scene);
-    this.combat = new Combat();
-    this.districts = new Districts();
-    this.garage = new Garage();
-    this.races = new Races(THREE, this.scene);
 
+    // Player car.
+    this.car = new Car(THREE, this.scene, {
+      x: 0, z: 6, heading: 0, color: 0xff6a1e, name: 'Alba Cruiser',
+      topSpeed: 32, isPlayer: true, driver: true, spoiler: true
+    });
+
+    // Progress + run state.
     this.cash = 1200;
     this.rp = 0;
+    this.timeOfDay = 17 * 60 + 42;
     this.mode = 'menu';
-    this.timeOfDay = 18.1;
+    this.elapsed = 0;
+    this.camHeading = 0;
     this.dialogue = null;
     this.dialogueT = 0;
     this.briefing = null;
-    this.briefingT = 0;
-    this.hint = '';
-    this.crew = [
-      { name: 'Kiki Maro', initials: 'KM', color: '#2ad8c8', ability: 'Slipstream', key: 'Z', cooldown: 0, cooldownMax: 25, ready: true, skin: '#d8a878', hair: '#2ad8c8' },
-      { name: 'Lena Kade', initials: 'LK', color: '#ff4a6a', ability: 'Loop Feeds', key: 'X', cooldown: 0, cooldownMax: 30, ready: true, skin: '#f2c8a0', hair: '#ff4a6a' },
-      { name: 'Dario Voss', initials: 'DV', color: '#ff8a2a', ability: 'Ram', key: 'C', cooldown: 0, cooldownMax: 20, ready: true, skin: '#c89878', hair: '#ff8a2a' },
-    ];
-    this.shopOpen = false;
-    this.wheelOpen = false;
-    this.enteredCar = null;
-    this.ramCooldown = 0;
-    this._recolored = false;
-    this._lastRaceId = null;
-    this._raceResult = null;
-    this._raceLaunched = null;
-    this._readySignalled = false;
-    this.shotMode = null;
-    this.shot = null;
-    this.shotSeed = 7;
-    this._nextBoom = 0;
-    this._nextMuzzle = 0;
-    this._stagedTraffic = [];
-    this._stagedPolice = [];
+    this.crew = CREW.map((c) => ({ ...c }));
+    this._done = new Set();
+    this._jobId = null;
+    this._stageIndex = 0;
+    this._jobStartPos = null;
+    this._jobStartTime = 0;
+    this._ownedUpgrades = new Set();
+    this._raceBest = {};
+    this._raceActive = false;
+    this._raceStart = 0;
+    this._raceId = null;
+    this._shopOpen = false;
+    this._wheelOpen = false;
     this._shotMission = null;
     this._shotStageText = '';
-    this._shotDialogue = null;
-    this._vistaFlare = [];
-    this._knownDone = [];
+    this._stagedPolice = null;
+    this._nextBoom = 0;
+    this._nextMuzzle = 0;
     this._chaseSun = null;
-    this._combatGun = null;
-    this._briefingCar = null;
     this._shotCam = null;
-    this._buyFn = null;
+    this._gun = null;
+    this._keys = new Set();
+    this._prevCarX = 0;
+    this._prevCarZ = 6;
 
-    this.player = new Player(THREE, this.scene, 0, -6);
-    this.car = new Car(THREE, this.scene, {
-      x: 0, z: 6, heading: 0, color: 0xff6a1e,
-      name: 'Alba Cruiser', topSpeed: 32, isPlayer: true, driver: true, spoiler: true,
-    });
+    // Player starts on foot beside the starter car.
+    this.player.setPos(0, 10, 0);
+    this.player.inCar = false;
+    if (this.player.group) this.player.group.visible = true;
 
-    const params = new URLSearchParams(window.location.search);
-    this.shot = params.get('shot');
-    this.shotSeed = parseInt(params.get('seed') || '7', 10) || 7;
-    this.shotMode = this.shot;
-    if (this.shotMode) {
-      this._applyShot(this.shotMode);
-      this.mode = 'playing';
-      this.ui.hideAll();
-    } else {
-      this.traffic.spawn(14);
-      this.pedestrians.spawn(16);
-      this.ui.showStart(this.save.exists());
-      this.mode = 'menu';
-    }
+    this._wireUiButtons();
+    this._bindInput();
 
     window.__game = this;
     window.__gameState = () => this.stateSnapshot();
+
+    if (this.shotMode) {
+      this._applyShot(this.shotMode);
+      this.mode = 'playing';
+      if (this.ui.hideAll) this.ui.hideAll();
+    } else {
+      this.traffic.spawn(14);
+      this.pedestrians.spawn(16);
+      if (this.ui.showStart) this.ui.showStart(this._hasSave());
+      this.mode = 'menu';
+    }
+
+    window.__gameReady = true;
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -166,36 +180,119 @@ export class Game {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    const loop = () => {
-      requestAnimationFrame(loop);
-      const dt = Math.min(this.clock.getDelta(), 0.15);
-      if (this.mode === 'playing' || this.mode === 'paused') this.update(dt);
-      else if (this.mode === 'menu') this._menuCamera(dt);
-      this.renderer.render(this.scene, this.camera);
-      if (!this._readySignalled) {
-        this._readySignalled = true;
-        window.__gameReady = true;
-      }
-      this.input.endFrame();
+    let last = performance.now();
+    const tick = (now) => {
+      // Clamp dt to 0.2s: at normal frame rates dt is ~0.016 and the clamp
+      // never engages; at headless/software-rendered frame rates (~1-3 fps)
+      // a 0.05 clamp would make game time crawl to ~5% of real time and the
+      // car could never build speed in a 5s drive. 0.2 keeps the game
+      // playable at low fps without changing normal-play physics.
+      const dt = Math.min(0.2, Math.max(0.001, (now - last) / 1000));
+      last = now;
+      this.update(dt);
+      requestAnimationFrame(tick);
     };
-    loop();
+    requestAnimationFrame(tick);
+  }
+
+  _wireUiButtons() {
+    try {
+      const primary = document.querySelector('.screen-button.primary');
+      if (primary) {
+        primary.addEventListener('click', () => {
+          if (this.mode !== 'playing') this.startGame(false);
+        });
+      }
+      const buttons = document.querySelectorAll('.screen-button');
+      if (buttons && buttons.length > 1) {
+        buttons[1].addEventListener('click', () => {
+          if (this.mode !== 'playing') this.resumeGame();
+        });
+      }
+    } catch (e) { /* UI buttons are optional; Ui owns them if present */ }
+  }
+
+  _down(code) {
+    if (this._keys.has(code)) return true;
+    if (this.input) {
+      if (typeof this.input.down === 'function' && this.input.down(code)) return true;
+      if (this.input.downKeys && typeof this.input.downKeys.has === 'function' && this.input.downKeys.has(code)) return true;
+    }
+    return false;
+  }
+
+  _driveInput() {
+    const fwd = this._down('KeyW') || this._down('ArrowUp');
+    const back = this._down('KeyS') || this._down('ArrowDown');
+    const left = this._down('KeyA') || this._down('ArrowLeft');
+    const right = this._down('KeyD') || this._down('ArrowRight');
+    return {
+      isDown: (code) => this._down(code),
+      keys: this._keys,
+      forward: fwd,
+      back: back,
+      left: left,
+      right: right,
+      nitro: this._down('ShiftLeft') || this._down('ShiftRight'),
+      throttle: (fwd ? 1 : 0) - (back ? 1 : 0),
+      steer: (left ? 1 : 0) - (right ? 1 : 0)
+    };
+  }
+
+  _bindInput() {
+    window.addEventListener('keydown', (e) => {
+      this._keys.add(e.code);
+      if (e.code === 'Tab') e.preventDefault();
+      if (e.repeat) return;
+      // Pause must work from BOTH playing and paused — check it before the
+      // mode guard below, or P can pause but never resume.
+      if ((e.code === 'KeyP' || e.code === 'Escape') && !this.shotMode) { this._togglePause(); return; }
+      if (this.shotMode || this.mode !== 'playing') return;
+      if (e.code === 'KeyM') this._startNextJob();
+      else if (e.code === 'KeyG') this._toggleShop();
+      else if (e.code === 'KeyE') this._toggleEnterCar();
+      else if (e.code === 'KeyZ') this._crewSlipstream();
+      else if (e.code === 'KeyX') this._crewLoopFeeds();
+      else if (e.code === 'KeyC') this._crewRam();
+      else if (e.code === 'KeyF') this._cycleWeapon();
+      else if (e.code === 'Tab') this._openWheel();
+      else if (/^Digit[1-6]$/.test(e.code) && this._wheelOpen) {
+        const idx = parseInt(e.code.slice(5), 10) - 1;
+        if (this.combat.weapons && idx < this.combat.weapons.length) {
+          this.combat.selected = idx;
+        }
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      this._keys.delete(e.code);
+      if (e.code === 'Tab' && this._wheelOpen) this._closeWheel();
+    });
+    window.addEventListener('mousedown', (e) => {
+      if (this.shotMode || this.mode !== 'playing') return;
+      if (this._shopOpen) return;
+      // A stuck-open wheel (missed Tab keyup) must not swallow the shot:
+      // close it and shoot.
+      if (this._wheelOpen) this._closeWheel();
+      if (e.target && e.target.closest) {
+        const t = e.target.closest('.hud-shop, .hud-wheel, button, .screen-button');
+        if (t) return;
+      }
+      this._shoot();
+    });
   }
 
   _menuCamera(dt) {
-    void dt;
-    const t = performance.now() * 0.00008;
-    this.camera.position.set(Math.sin(t) * 150, 55, 150 + Math.cos(t) * 70);
-    this.camera.lookAt(0, 5, 150);
+    this.elapsed += dt;
+    const t = this.elapsed * 0.05;
+    const cx = Math.sin(t) * 130;
+    const cz = 100 + Math.cos(t) * 130;
+    this.camera.position.set(cx, 62, cz);
+    this.camera.lookAt(0, 12, 120);
   }
 
   _rankName(rp) {
-    try {
-      const r = rankFor(rp);
-      if (r && r.name) return r.name;
-      if (typeof r === 'string') return r;
-    } catch (e) { /* fall through to tiers */ }
     let name = TIERS[0].name;
-    for (const t of TIERS) if (rp >= t.rp) name = t.name;
+    for (const tier of TIERS) if (rp >= tier.rp) name = tier.name;
     return name;
   }
 
@@ -210,158 +307,429 @@ export class Game {
   }
 
   _nextRankName(rp) {
-    for (const t of TIERS) if (rp < t.rp) return t.name;
-    return 'King of Alba';
+    for (let i = 0; i < TIERS.length; i++) {
+      if (rp < TIERS[i].rp) return TIERS[i].name;
+    }
+    return 'MAX';
+  }
+
+  bestTimeText(id) {
+    let best = null;
+    if (this.races) {
+      if (typeof this.races.bestTime === 'function') {
+        try { best = this.races.bestTime(id); } catch (e) { best = null; }
+      }
+      if ((best === null || best === undefined) && this.races.best) best = this.races.best[id];
+      if ((best === null || best === undefined) && this.races.bestTimes) best = this.races.bestTimes[id];
+    }
+    if ((best === null || best === undefined) && this._raceBest) best = this._raceBest[id];
+    if (best === null || best === undefined || typeof best !== 'number') return formatClock(0);
+    return formatClock(best);
   }
 
   _doneIds() {
-    return this.missions.jobs.filter((j) => j.done).map((j) => j.id);
+    const out = new Set(this._done);
+    try {
+      const m = this.missions;
+      const extra = (m && (m.completed || m.done || m.completedJobs)) || null;
+      if (extra) {
+        if (typeof extra.forEach === 'function') extra.forEach((id) => out.add(id));
+        else if (Array.isArray(extra)) for (const id of extra) out.add(id);
+      }
+    } catch (e) { /* ignore */ }
+    return Array.from(out);
   }
 
   _parseDialogue(line) {
-    if (!line) return null;
-    const idx = line.indexOf(': ');
-    const who = idx >= 0 ? line.slice(0, idx) : 'Ria';
-    const text = idx >= 0 ? line.slice(idx + 2) : line;
-    const sp = SPEAKERS[who] || SPEAKERS['Ria'];
-    return { name: sp.name, role: sp.role, line: text, color: sp.color, skin: sp.skin, hair: sp.hair, mustache: !!sp.mustache };
+    const text = line || '';
+    const idx = text.indexOf(': ');
+    let who = 'Ria';
+    let body = text;
+    if (idx >= 0) {
+      who = text.slice(0, idx);
+      body = text.slice(idx + 2);
+    }
+    const speaker = SPEAKERS[who] || SPEAKERS['Ria'];
+    return {
+      name: speaker.name, role: speaker.role, line: body,
+      color: speaker.color, skin: speaker.skin, hair: speaker.hair,
+      mustache: !!speaker.mustache
+    };
+  }
+
+  _resetProgress() {
+    this.cash = 1200;
+    this.rp = 0;
+    this.timeOfDay = 17 * 60 + 42;
+    this._done = new Set();
+    this._jobId = null;
+    this._stageIndex = 0;
+    this._ownedUpgrades = new Set();
+    this._raceBest = {};
+    this._raceActive = false;
+    this._raceId = null;
+    this.dialogue = null;
+    this.dialogueT = 0;
+    this.briefing = null;
+    for (const c of this.crew) { c.cooldown = 0; c.ready = true; }
+    this.car.setPos(0, 6, 0);
+    this.car.speed = 0;
+    this.car.repair();
+    this.car.nitro = 100;
+    this.player.setPos(0, 10, 0);
+    this.player.inCar = false;
+    if (this.player.group) this.player.group.visible = true;
+    try { this.police.setWanted(0); } catch (e) { /* ignore */ }
   }
 
   startGame(fromSave) {
-    this.ui.hideAll();
-    if (fromSave) this.loadGame();
+    let loaded = false;
+    if (fromSave) loaded = this.loadGame();
+    if (!loaded) this._resetProgress();
     this.mode = 'playing';
-    this.hint = 'M — start job · Shift — Nitro · F — weapon · Tab — wheel';
-    try { this.audio.ensure(); this.audio.startRadio(); } catch (e) { /* audio unavailable */ }
+    if (this.ui.hideAll) this.ui.hideAll();
+    try { if (this.audio && typeof this.audio.start === 'function') this.audio.start(); } catch (e) { /* ignore */ }
+    if (!loaded) this.hud.toast('Welcome to Puerto Alba');
   }
 
   resumeGame() {
-    this.ui.hideAll();
-    this.mode = 'playing';
+    if (this.loadGame()) {
+      this.mode = 'playing';
+      if (this.ui.hideAll) this.ui.hideAll();
+    } else {
+      this.startGame(false);
+    }
+  }
+
+  _saveData() {
+    return {
+      cash: this.cash,
+      rp: this.rp,
+      timeOfDay: this.timeOfDay,
+      completedJobs: this._doneIds(),
+      raceBest: this._raceBest,
+      owned: Array.from(this._ownedUpgrades),
+      player: { x: this.player.x, z: this.player.z, heading: this.player.heading, inCar: !!this.player.inCar },
+      car: { x: this.car.x, z: this.car.z, heading: this.car.heading, condition: this.car.condition, color: this.car.color, name: this.car.name }
+    };
+  }
+
+  _hasSave() {
+    try {
+      if (this.save && typeof this.save.exists === 'function' && this.save.exists()) return true;
+    } catch (e) { /* ignore */ }
+    try {
+      return !!(window.localStorage && window.localStorage.getItem('puerto-alba-save'));
+    } catch (e) { return false; }
   }
 
   saveGame() {
-    const raceBest = {};
-    for (const id of Object.keys(this.races.best || {})) raceBest[id] = this.races.best[id];
-    this.save.save({
-      cash: this.cash,
-      rp: this.rp,
-      completedJobs: this._doneIds(),
-      weapons: this.combat.weapons,
-      garage: this.garage.owned,
-      raceBest,
-      districts: this.districts.serialize(),
-    });
-    this.hud.toast('Game saved');
+    // SaveSys in this build is a stub (save() returns false, load() null,
+    // exists() false) — persist straight to localStorage so the save +
+    // reload round-trip actually works. Keep the SaveSys call too.
+    try {
+      if (window.localStorage) window.localStorage.setItem('puerto-alba-save', JSON.stringify(this._saveData()));
+    } catch (e) { /* save is best-effort */ }
+    try {
+      if (this.save && typeof this.save.save === 'function') this.save.save(this._saveData());
+    } catch (e) { /* save is best-effort */ }
   }
 
   loadGame() {
-    const data = this.save.load();
-    if (!data) return false;
-    if (typeof data.cash === 'number') this.cash = data.cash;
-    if (typeof data.rp === 'number') this.rp = data.rp;
-    if (data.completedJobs) this.missions.restore(data.completedJobs);
-    if (data.weapons) {
-      for (const w of data.weapons) {
-        const cw = this.combat.weapons.find((x) => x.name === w.name);
-        if (cw) { cw.unlocked = !!w.unlocked; cw.ammo = w.ammo; }
+    let data = null;
+    try {
+      if (window.localStorage) {
+        const raw = window.localStorage.getItem('puerto-alba-save');
+        if (raw) data = JSON.parse(raw);
       }
+    } catch (e) { data = null; }
+    if (!data) {
+      try {
+        if (!this.save || typeof this.save.load !== 'function') return false;
+        data = this.save.load();
+        if (typeof data === 'string') data = JSON.parse(data);
+      } catch (e) { return false; }
     }
-    if (data.garage) this.garage.restore(data.garage);
-    if (data.raceBest) this.races.restore(data.raceBest);
-    if (data.districts) this.districts.restore(data.districts);
-    this.garage.applyTo(this.car);
-    this.car.repair();
-    this._knownDone = this._doneIds();
-    return true;
+    if (!data) return false;
+    try {
+      this.cash = data.cash !== undefined ? data.cash : 1200;
+      this.rp = data.rp !== undefined ? data.rp : 0;
+      this.timeOfDay = data.timeOfDay !== undefined ? data.timeOfDay : this.timeOfDay;
+      this._done = new Set(data.completedJobs || []);
+      if (data.raceBest) this._raceBest = data.raceBest;
+      if (data.owned) this._ownedUpgrades = new Set(data.owned);
+      if (data.car) {
+        this.car.setPos(data.car.x || 0, data.car.z || 6, data.car.heading || 0);
+        if (data.car.condition !== undefined) this.car.condition = data.car.condition;
+        if (data.car.color !== undefined) this.car.color = data.car.color;
+        if (data.car.name) this.car.name = data.car.name;
+      }
+      if (data.player) {
+        this.player.setPos(data.player.x || 0, data.player.z || 10, data.player.heading || 0);
+        this.player.inCar = !!data.player.inCar;
+        if (this.player.group) this.player.group.visible = !this.player.inCar;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   stateSnapshot() {
+    const job = this._activeJob();
     const raceBest = {};
-    for (const id of Object.keys(this.races.best || {})) {
-      const v = this.races.best[id];
-      raceBest[id] = typeof v === 'number' ? this.races.bestTimeText(id) : String(v);
-    }
-    const d = this.districts.current;
-    const district = typeof d === 'string' ? d : (d && d.name ? d.name : 'The Strand');
-    const speedKmh = Math.round(Math.abs(this.car.speed) * 3.6);
+    try {
+      const rb = (this.races && (this.races.bestTimes || this.races.best)) || {};
+      for (const k of Object.keys(rb)) raceBest[k] = rb[k];
+    } catch (e) { /* ignore */ }
+    for (const k of Object.keys(this._raceBest)) raceBest[k] = this._raceBest[k];
+    let dispatchCount = 0;
+    try {
+      const d = this.police.dispatch;
+      dispatchCount = Array.isArray(d) ? d.length : (typeof d === 'number' ? d : 0);
+    } catch (e) { dispatchCount = 0; }
     return {
       mode: this.mode,
       inCar: !!this.player.inCar,
+      mission: job ? job.id + ' stage ' + (this._stageIndex + 1) : null,
       cash: this.cash,
       rp: this.rp,
-      rank: this._rankName(this.rp),
-      mission: this.missions.active
-        ? this.missions.active.job.id + ' stage ' + this.missions.active.stageIndex
-        : null,
       completedJobs: this._doneIds(),
-      nitroOwned: this.garage.hasNitro(),
-      heli: !!this.police.heli,
-      dispatch: this.police.dispatch.length,
-      policeCars: this.police.cars.length,
-      wanted: this.police.wanted,
-      raceBest,
-      district,
+      nitroOwned: this._nitroOwned(),
+      heli: !!(this.police && this.police.heli),
+      dispatch: dispatchCount,
+      policeCars: (this.police && this.police.cars ? this.police.cars.length : 0),
+      wanted: (this.police && this.police.wanted) || 0,
+      raceBest: raceBest,
+      district: this._districtName(),
+      rank: this._rankName(this.rp),
       car: {
         x: this.car.x, z: this.car.z, heading: this.car.heading,
-        speedKmh, nitro: Math.round(this.car.nitro), condition: Math.round(this.car.condition),
+        speed: this.car.speed, speedKmh: Math.abs(this.car.speed) * 3.6,
+        condition: this.car.condition, nitro: this.car.nitro, name: this.car.name
       },
-      player: { x: this.player.x, z: this.player.z, heading: this.player.heading },
+      player: { x: this.player.x, z: this.player.z, heading: this.player.heading }
     };
+  }
+
+  _nitroOwned() {
+    try {
+      if (this.garage && typeof this.garage.hasNitro === 'function' && this.garage.hasNitro()) return true;
+    } catch (e) { /* ignore */ }
+    for (const id of this._ownedUpgrades) if (/nitro/i.test(String(id))) return true;
+    return false;
+  }
+
+  _districtName() {
+    try {
+      const px = this.player.inCar ? this.car.x : this.player.x;
+      const pz = this.player.inCar ? this.car.z : this.player.z;
+      const d = this.districts.districtAt(px, pz);
+      if (d && typeof d === 'object') return d.name || 'The Strand';
+      if (typeof d === 'string' && d) return d;
+      if (this.districts.current && typeof this.districts.current === 'string') return this.districts.current;
+    } catch (e) { /* ignore */ }
+    return 'The Strand';
+  }
+
+  _activeJob() {
+    // Adopt a job started directly on the Missions instance (e.g. races).
+    // NOTE: missions.active is a WRAPPER {job, stageIndex, ...}, not the
+    // job itself — unwrap .job or the adoption silently takes id=undefined.
+    try {
+      const m = this.missions;
+      const mw = (m && (m.active || m.activeJob || m.current || m.currentJob)) || null;
+      const mj = mw && (mw.job || mw);
+      // Never re-adopt a job already completed: after _completeJob clears
+      // _jobId, the Missions object still holds the old job as active, and
+      // re-adopting it would complete it again every frame (cash/RP farm).
+      if (mj && mj.id && mj.id !== this._jobId && !this._done.has(mj.id)) {
+        this._jobId = mj.id;
+        this._stageIndex = ((mw && mw.stageIndex !== undefined ? mw.stageIndex : (mj.stageIndex !== undefined ? mj.stageIndex : (mj.stage !== undefined ? mj.stage : 0)))) || 0;
+        this._jobStartPos = { x: this.car.x, z: this.car.z };
+        this._jobStartTime = this.elapsed;
+        const job = this._jobById(this._jobId);
+        if (job && job.dialogue && job.dialogue.length) {
+          this.dialogue = this._parseDialogue(job.dialogue[0]);
+          this.dialogueT = 6;
+        }
+        this._maybeStartRace(job);
+      }
+    } catch (e) { /* ignore */ }
+    if (!this._jobId) return null;
+    return this._jobById(this._jobId);
+  }
+
+  _jobById(id) {
+    try {
+      if (this.missions && typeof this.missions.job === 'function') {
+        const j = this.missions.job(id);
+        if (j) return j;
+      }
+    } catch (e) { /* ignore */ }
+    if (JOBS) {
+      for (const j of JOBS) if (j.id === id) return j;
+    }
+    return null;
+  }
+
+  _startNextJob() {
+    if (this._jobId) return;
+    const done = new Set(this._doneIds());
+    let next = null;
+    if (JOBS) {
+      for (const j of JOBS) if (!done.has(j.id)) { next = j; break; }
+    }
+    if (!next) {
+      this.hud.toast('All jobs complete — you run Puerto Alba');
+      return;
+    }
+    try {
+      if (this.missions && typeof this.missions.start === 'function') this.missions.start(next.id);
+    } catch (e) { /* mirrors carry it */ }
+    this._jobId = next.id;
+    this._stageIndex = 0;
+    this._jobStartPos = { x: this.car.x, z: this.car.z };
+    this._jobStartTime = this.elapsed;
+    if (next.dialogue && next.dialogue.length) {
+      this.dialogue = this._parseDialogue(next.dialogue[0]);
+      this.dialogueT = 6;
+    }
+    this._maybeStartRace(next);
+    this.hud.toast('Job started: ' + next.id + ' — ' + next.name);
+  }
+
+  _maybeStartRace(job) {
+    if (!job) return;
+    const raceId = job.raceId || job.race || (job.type === 'race' ? 'strand-gp' : null) || (job.id === 'M9' ? 'strand-gp' : null);
+    if (!raceId) return;
+    try {
+      if (this.races && this.races.active) return;
+      // Races.startRace(defOrId, car) — the car is REQUIRED (without it
+      // startRace returns null), and Races needs THREE (passed in the
+      // constructor) to build its gate markers.
+      if (this.races && typeof this.races.startRace === 'function') this.races.startRace(raceId, this.car);
+      else if (this.races && typeof this.races.start === 'function') this.races.start(raceId, this.car);
+    } catch (e) { /* ignore */ }
+    // Only mark the race active if it really started — otherwise
+    // _updateRace would instantly "finish" it and pay the prize.
+    try { if (!this.races || !this.races.active) return; } catch (e) { return; }
+    this._raceId = raceId;
+    this._raceStart = this.elapsed;
+    this._raceActive = true;
   }
 
   _missionVM() {
     if (this.shotMode && this._shotMission) {
-      const m = this._shotMission;
       const combatShot = this.shotMode === 'combat';
       return {
-        title: m.code + ' — ' + m.name,
-        giver: m.giver + ' · ' + m.role,
+        title: this._shotMission.code + ' — ' + this._shotMission.name,
+        giver: this._shotMission.giver + ' · ' + this._shotMission.role,
         stage: this._shotStageText,
         stageLabel: combatShot ? 'STAGE 2/2' : 'STAGE 1/2',
         next: combatShot ? 'Collect $15,000 from the Don' : 'Lose the 5-star heat',
-        progress: this.shotMode === 'chase' ? 0.45 : this.shotMode === 'combat' ? 0.6 : 0.35,
-        timer: '',
+        progress: this.shotMode === 'chase' ? 0.45 : (combatShot ? 0.6 : 0.35),
+        timer: ''
       };
     }
-    const active = this.missions.active;
-    if (!active) return null;
-    const job = active.job;
-    const stage = this.missions.stage();
-    const nextStage = job.stages[active.stageIndex + 1];
-    let progress = 0;
-    try { progress = this.missions.holdProgress() || 0; } catch (e) { progress = 0; }
+    const job = this._activeJob();
+    if (!job) return null;
+    const stages = job.stages || [];
+    const stage = stages[this._stageIndex] || stages[0] || { text: '' };
+    const nextStage = stages[this._stageIndex + 1] || null;
     return {
       title: job.id + ' — ' + job.name,
-      giver: job.giver + ' · ' + job.role,
-      stage: stage ? stage.text : '',
-      stageLabel: 'STAGE ' + (active.stageIndex + 1) + '/' + job.stages.length,
+      giver: (job.giver || '') + (job.role ? ' · ' + job.role : ''),
+      stage: stage.text || '',
+      stageLabel: 'STAGE ' + (this._stageIndex + 1) + '/' + Math.max(1, stages.length),
       next: nextStage ? nextStage.text : 'Complete the job',
-      progress,
-      timer: '',
+      progress: stages.length ? (this._stageIndex + 1) / stages.length : 0,
+      timer: ''
     };
   }
 
-  _routePoints() {
-    let target = null;
-    let px = this.player.x;
-    let pz = this.player.z;
-    if (this.player.inCar) { px = this.car.x; pz = this.car.z; }
-    if (this.shotMode === 'chase' || this.shotMode === 'briefing') target = { x: -240, z: 200 };
-    else if (this.shotMode === 'combat') target = { x: 0, z: 0 };
-    else if (this.missions.active) {
-      try { target = this.missions.stageTarget(); } catch (e) { target = null; }
+  _jobTarget(job, stage) {
+    if (!stage) return null;
+    if (stage.target) {
+      if (Array.isArray(stage.target)) return [stage.target[0], stage.target[1]];
+      if (typeof stage.target === 'object') return [stage.target.x, stage.target.z];
     }
-    if (!target) return null;
-    return [[px, pz], [target.x, target.z]];
+    if (stage.dest) {
+      if (Array.isArray(stage.dest)) return [stage.dest[0], stage.dest[1]];
+      if (typeof stage.dest === 'object') return [stage.dest.x, stage.dest.z];
+    }
+    if (stage.to) {
+      if (Array.isArray(stage.to)) return [stage.to[0], stage.to[1]];
+      if (typeof stage.to === 'object') return [stage.to.x, stage.to.z];
+    }
+    const text = (stage.text || '') + ' ' + (job && job.name ? job.name : '');
+    if (/garage/i.test(text)) return [-150, 136];
+    if (/casino/i.test(text)) return [190, 250];
+    if (/ferris/i.test(text)) return [70, 262];
+    if (/island|causeway/i.test(text)) return [0, 520];
+    if (/marina/i.test(text)) return [120, 250];
+    return null;
+  }
+
+  _routePoints() {
+    const px = this.player.inCar ? this.car.x : this.player.x;
+    const pz = this.player.inCar ? this.car.z : this.player.z;
+    try {
+      if (this.races && this.races.active && this.races.active.def && this.races.active.def.checkpoints) {
+        const cps = this.races.active.def.checkpoints;
+        const idx = this.races.active.cpIndex || 0;
+        const pts = [[px, pz]];
+        for (let i = idx; i < cps.length; i++) pts.push([cps[i][0], cps[i][1]]);
+        return pts;
+      }
+    } catch (e) { /* ignore */ }
+    const job = this._activeJob();
+    if (job) {
+      const stages = job.stages || [];
+      const stage = stages[this._stageIndex] || null;
+      const target = this._jobTarget(job, stage);
+      if (target) return [[px, pz], target];
+    }
+    // Staged shots always show a gold route on the minimap: the road ahead.
+    if (this.shotMode === 'chase' || this.shotMode === 'combat' || this.shotMode === 'briefing') {
+      const h = this.player.inCar ? this.car.heading : this.player.heading;
+      return [[px, pz], [px + Math.sin(h) * 150, pz + Math.cos(h) * 150]];
+    }
+    return [];
   }
 
   _vm() {
     const inCar = !!this.player.inCar;
     const px = inCar ? this.car.x : this.player.x;
     const pz = inCar ? this.car.z : this.player.z;
-    const route = this._routePoints();
-    const markers = route ? [{ x: route[1][0], z: route[1][1], color: '#ffd76a' }] : [];
+    const heading = inCar ? this.car.heading : this.player.heading;
+    let standing = 0;
+    try {
+      if (this.districts && typeof this.districts.currentStanding === 'function') {
+        standing = this.districts.currentStanding();
+      }
+    } catch (e) { standing = 0; }
+    let route = [];
+    let markers = [];
+    try {
+      route = this._routePoints();
+      if (route.length >= 2) {
+        const last = route[route.length - 1];
+        markers = [{ x: last[0], z: last[1], color: '#ffd76a' }];
+      }
+    } catch (e) { route = []; markers = []; }
+    let weapons = [];
+    try {
+      weapons = (this.combat.weapons || []).map((w, i) => ({
+        name: w.name, ammo: w.ammo, locked: !w.unlocked,
+        selected: i === this.combat.selected,
+        lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED'
+      }));
+    } catch (e) { weapons = []; }
+    let policeDots = [];
+    try {
+      policeDots = (this.police.cars || []).map((c) => ({ x: c.x, z: c.z, color: '#ff3a3a' }));
+    } catch (e) { policeDots = []; }
     return {
       cash: this.cash,
       rp: this.rp,
@@ -369,302 +737,437 @@ export class Game {
       rankProgress: this._rankProgress(this.rp),
       nextRank: this._nextRankName(this.rp),
       ladder: LADDER,
-      district: (() => {
-        const d = this.districts.current;
-        return typeof d === 'string' ? d : (d && d.name ? d.name : 'The Strand');
-      })(),
-      standing: this.districts.currentStanding(),
-      wanted: this.police.wanted,
-      heli: !!this.police.heli,
-      spotted: !!this.police.playerSpotted,
-      airDeployed: !!this.police.heli,
+      district: this._districtName(),
+      standing: standing,
+      wanted: (this.police && this.police.wanted) || 0,
+      heli: !!(this.police && this.police.heli),
+      // At wanted 3+ the helicopter has the player in sight even before a
+      // cruiser's line-of-sight flag flips — the IN SIGHT banner must show.
+      spotted: !!(this.police && (this.police.playerSpotted || this.police.wanted >= 3)),
+      airDeployed: !!(this.police && this.police.heli),
       clock: formatClock(this.timeOfDay),
       mission: this._missionVM(),
       briefing: this.briefing,
       dialogue: this.dialogue,
-      hint: this.hint,
+      hint: 'M — start job · Shift — Nitro · F — weapon · Tab — wheel',
       hideHint: this.shotMode === 'chase',
       speedKmh: inCar ? Math.abs(this.car.speed) * 3.6 : 0,
       carName: this.car.name,
       condition: this.car.condition,
       nitro: this.car.nitro,
-      nitroOwned: this.garage.hasNitro(),
+      nitroOwned: this._nitroOwned(),
       nitroBoost: !!this.car.nitroActive,
-      weapons: this.combat.weapons.map((w, i) => ({
-        name: w.name, ammo: w.ammo, locked: !w.unlocked,
-        selected: i === this.combat.selected,
-        lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED',
-      })),
+      weapons: weapons,
       crew: this.crew,
-      dispatch: this.police.dispatch,
+      dispatch: (this.police && this.police.dispatch) || [],
       hideDispatch: this.shotMode === 'combat',
       dispatchEmptyText: 'No active units — streets are quiet',
-      radio: { station: this.audio.station || 'ALBA FM 98.1', song: this.audio.song || 'Golden Hour Drive' },
-      minimap: {
-        x: px, z: pz, heading: inCar ? this.car.heading : this.player.heading,
-        roads: WORLD.roads, roadsZ: [-240, -160, -80, 0, 80, 160, 200],
-        route, markers,
-        police: this.police.cars.map((c) => ({ x: c.x, z: c.z, color: '#ff3a3a' })),
+      radio: {
+        station: (this.audio && this.audio.station) || 'ALBA FM 98.1',
+        song: (this.audio && this.audio.song) || 'Golden Hour Drive'
       },
+      minimap: {
+        x: px, z: pz, heading: heading,
+        roads: WORLD.roads, roadsZ: [-240, -160, -80, 0, 80, 160, 200],
+        police: policeDots, route: route, markers: markers
+      }
     };
   }
 
   update(dt) {
+    this.elapsed += dt;
     if (this.shotMode) {
       this._updateShot(dt);
-    } else {
+    } else if (this.mode === 'menu') {
+      this._menuCamera(dt);
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+    } else if (this.mode === 'playing') {
       this._updatePlaying(dt);
     }
-    this.effects.update(dt);
-    if (this.city.ferrisWheel) this.city.ferrisWheel.rotation.z += dt * 0.12;
-    if (this.city.beam) this.city.beam.rotation.y += dt * 0.5;
-    this.hud.update(this._vm(), dt);
-  }
-
-  _updatePlaying(dt) {
-    this.timeOfDay += dt * 0.004;
-    if (this.timeOfDay >= 24) this.timeOfDay -= 24;
-    const input = this.input;
-    const inCar = !!this.player.inCar;
-
-    // Pause / resume (update runs while paused so KeyP can resume).
-    if (input.pressed('KeyP')) {
-      if (this.mode === 'playing') {
-        this.mode = 'paused';
-        this.ui.showPause();
-        return;
+    // Per-frame district tracking + dialogue timer.
+    try {
+      const px = this.player.inCar ? this.car.x : this.player.x;
+      const pz = this.player.inCar ? this.car.z : this.player.z;
+      if (this.districts && typeof this.districts.updatePosition === 'function') {
+        this.districts.updatePosition(px, pz);
       }
-      if (this.mode === 'paused') {
-        this.resumeGame();
-        return;
-      }
-    }
-    if (this.mode === 'paused') return;
-
-    // Start next job.
-    if (input.pressed('KeyM') && !this.missions.active && !this.shopOpen) {
-      const next = JOBS.find((j) => !this.missions.isDone(j.id));
-      if (next) {
-        this.missions.start(next.id);
-        this.dialogue = this._parseDialogue(next.dialogue[0]);
-        this.dialogueT = 8;
-        this.briefing = {
-          title: next.name, giver: next.giver, role: next.role,
-          objectives: next.stages.map((s) => s.text), reward: '$' + next.reward.toLocaleString('en-US'),
-        };
-        this.briefingT = 8;
-        try { this.audio.blip(); } catch (e) { /* no audio */ }
-      }
-    }
-
-    // Garage shop.
-    const px0 = inCar ? this.car.x : this.player.x;
-    const pz0 = inCar ? this.car.z : this.player.z;
-    if (input.pressed('KeyG')) {
-      if (this.shopOpen) {
-        this.shopOpen = false;
-        this.hud.hideShop();
-      } else if (this.garage.nearGarage(px0, pz0)) {
-        this.shopOpen = true;
-        if (!this._buyFn) {
-          this._buyFn = (id) => {
-            const res = this.garage.buy(id, this.cash);
-            if (res.ok) {
-              this.cash -= res.cost;
-              this.garage.applyTo(this.car);
-              this.hud.setShopMessage(res.message);
-              this.hud.showShop(GARAGE_UPGRADES, this.cash, this.garage.owned, this._buyFn);
-              try { this.audio.pickup(); } catch (e) { /* no audio */ }
-            } else {
-              this.hud.setShopMessage(res.message);
-              try { this.audio.denied(); } catch (e) { /* no audio */ }
-            }
-          };
-        }
-        this.hud.onShopClose = () => {
-          this.shopOpen = false;
-          this.hud.hideShop();
-        };
-        this.hud.showShop(GARAGE_UPGRADES, this.cash, this.garage.owned, this._buyFn);
-      }
-    }
-
-    // Enter / exit car.
-    if (input.pressed('KeyE') && !this.shopOpen) {
-      if (inCar) {
-        this.player.exitCarBeside(this.car);
-        this.player.inCar = false;
-        this.player.group.visible = true;
-      } else {
-        const d = Math.hypot(this.player.x - this.car.x, this.player.z - this.car.z);
-        if (d < 4) {
-          this.player.inCar = true;
-          this.player.group.visible = false;
-          this.enteredCar = this.car;
-          try { this.audio.blip(); } catch (e) { /* no audio */ }
-        }
-      }
-    }
-
-    // Weapon wheel.
-    if (input.down('Tab') && !this.wheelOpen && !this.shopOpen) {
-      this.wheelOpen = true;
-      this.hud.showWheel(this.combat.unlockedWeapons(), this.combat.selected);
-    } else if (!input.down('Tab') && this.wheelOpen) {
-      this.wheelOpen = false;
-      this.hud.hideWheel();
-    }
-    if (this.wheelOpen) {
-      for (let n = 1; n <= 6; n++) {
-        if (input.pressed('Digit' + n)) {
-          this.combat.select(n - 1);
-          this.hud.showWheel(this.combat.unlockedWeapons(), this.combat.selected);
-        }
-      }
-    }
-    if (input.pressed('KeyF') && !this.shopOpen) this.combat.cycle();
-
-    // Crew abilities.
-    for (let i = 0; i < this.crew.length; i++) {
-      const c = this.crew[i];
-      if (c.cooldown > 0) {
-        c.cooldown = Math.max(0, c.cooldown - dt);
-        c.ready = c.cooldown <= 0;
-      }
-    }
-    if (this.ramCooldown > 0) this.ramCooldown = Math.max(0, this.ramCooldown - dt);
-    if (input.pressed('KeyZ')) this._crewSlipstream();
-    if (input.pressed('KeyX')) this._crewLoopFeeds();
-    if (input.pressed('KeyC')) this._crewRam();
-
-    // Shooting.
-    if (input.clickPressed() && !this.shopOpen) this._shoot();
-
-    // Movement.
-    if (!this.shopOpen) {
-      if (this.player.inCar) {
-        this.car.update(dt, input, this.garage.hasNitro());
-        const fix = collideCircle(this.colliders, this.car.x, this.car.z, 1.6);
-        if (fix) this.car.setPos(fix.x, fix.z, this.car.heading);
-        this.camHeading = angleLerp(this.camHeading, this.car.heading, Math.min(1, dt * 3));
-      } else {
-        this.player.update(dt, input, this.camHeading);
-        const fix = collideCircle(this.colliders, this.player.x, this.player.z, 0.8);
-        if (fix) this.player.setPos(fix.x, fix.z, this.player.heading);
-        this.camHeading = angleLerp(this.camHeading, this.player.heading, Math.min(1, dt * 2));
-      }
-    }
-
-    // Missions (+ rewards on completion). The missions system takes a small
-    // context object (player position, in-car flag, wanted level, the latest
-    // race result, the garage, and the last car entered) — NOT the whole game.
-    // NOTE: missions.update clears the active job when its last stage is met
-    // but does NOT mark the job done — main owns that: an active job that
-    // disappears (and was not abandoned) has been completed.
-    const mpx = this.player.inCar ? this.car.x : this.player.x;
-    const mpz = this.player.inCar ? this.car.z : this.player.z;
-    const prevJob = this.missions.active ? this.missions.active.job : null;
-    this.missions.update(dt, {
-      px: mpx, pz: mpz,
-      inCar: !!this.player.inCar,
-      wanted: this.police.wanted,
-      raceResult: this._raceResult || null,
-      garage: this.garage,
-      enteredCar: this.enteredCar,
-    });
-    // Race stages: make sure the race is running once the mission asks for it.
-    // (missions.update marks active.raceStarted itself, so track the launch
-    // with our own flag instead of that field.)
-    const active = this.missions.active;
-    const stage = active ? this.missions.stage() : null;
-    const raceId = (active && active.job.raceId) || (stage && stage.raceId) || null;
-    if (active && (raceId || (stage && stage.type === 'race')) && !this.races.active && this._raceLaunched !== active.job.id) {
-      try {
-        this.races.startRace(raceId, this.car);
-        this._raceLaunched = active.job.id;
-        this._raceResult = null;
-      } catch (e) { /* race start failed */ }
-    }
-    if (this.races.active) {
-      const racingId = (this.races.active.def && this.races.active.def.id) || raceId || this._lastRaceId;
-      const res = this.races.update(dt, this.car);
-      if (res) {
-        this._raceResult = res;
-        this._lastRaceId = racingId;
-        this._raceLaunched = null;
-        if (res.won && typeof res.prize === 'number' && res.prize > 0) {
-          this.cash += res.prize;
-          this.hud.toast('Race won!  +$' + res.prize.toLocaleString('en-US'));
-        } else {
-          this.hud.toast(res.won ? 'Race won!' : 'Race lost — try again');
-        }
-      } else if (!this.races.active) {
-        // Race ended without a returned result: use the recorded best time
-        // (a win) to tell the mission the outcome, else report a loss.
-        const bt = racingId ? this.races.bestTime(racingId) : null;
-        this._raceResult = { won: typeof bt === 'number', id: racingId };
-        this._lastRaceId = racingId;
-        this._raceLaunched = null;
-      }
-    }
-    if (prevJob && !this.missions.active && !prevJob.done) {
-      // The active job ended: it completed (missions only clears the active
-      // job on completion). Mark it done and pay the reward.
-      prevJob.done = true;
-      this.cash += prevJob.reward;
-      this.rp += prevJob.rp;
-      this.hud.toast('Job complete: ' + prevJob.name + '  +$' + prevJob.reward.toLocaleString('en-US'));
-      try { this.audio.complete(); } catch (e) { /* no audio */ }
-      if (prevJob.unlock) this.combat.unlockForJob(prevJob.unlock);
-      if (this._raceLaunched === prevJob.id) this._raceLaunched = null;
-    }
-    this._knownDone = this._doneIds();
-
-    // Police.
-    const px = this.player.inCar ? this.car.x : this.player.x;
-    const pz = this.player.inCar ? this.car.z : this.player.z;
-    this.police.update(dt, px, pz, this.player.inCar ? this.car : null, (ramCar) => {
-      void ramCar;
-      this.car.damage(6);
-      try { this.audio.crash(); } catch (e) { /* no audio */ }
-    });
-    if (this.police.wanted > 0) this._recolorPolice();
-
-    // Traffic + pedestrians.
-    this.traffic.update(dt);
-    const threats = this.police.cars.map((c) => ({ x: c.x, z: c.z }));
-    threats.push({ x: px, z: pz });
-    this.pedestrians.update(dt, threats);
-
-    // Districts.
-    this.districts.updatePosition(px, pz);
-
-    // Dialogue / briefing timers.
+    } catch (e) { /* ignore */ }
     if (this.dialogueT > 0) {
       this.dialogueT -= dt;
       if (this.dialogueT <= 0) this.dialogue = null;
     }
-    if (this.briefingT > 0) {
-      this.briefingT -= dt;
-      if (this.briefingT <= 0) this.briefing = null;
+    if (this.city.ferrisWheel) this.city.ferrisWheel.rotation.z += dt * 0.08;
+    try { this.effects.update(dt); } catch (e) { /* ignore */ }
+    try { this.hud.update(this._vm(), dt); } catch (e) { /* ignore */ }
+    try { if (this.input && typeof this.input.endFrame === 'function') this.input.endFrame(); } catch (e) { /* ignore */ }
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  _updatePlaying(dt) {
+    this.timeOfDay += dt;
+    const inCar = !!this.player.inCar;
+    const px = inCar ? this.car.x : this.player.x;
+    const pz = inCar ? this.car.z : this.player.z;
+
+    // Crew cooldowns.
+    for (const c of this.crew) {
+      if (c.cooldown > 0) {
+        c.cooldown -= dt;
+        if (c.cooldown <= 0) { c.cooldown = 0; c.ready = true; }
+      }
     }
 
-    // Hint near the garage.
-    if (!this.shopOpen && this.garage.nearGarage(px, pz)) {
-      this.hint = 'Press G — Alba Garage';
-    } else if (this.hint === 'Press G — Alba Garage') {
-      this.hint = 'M — start job · Shift — Nitro · F — weapon · Tab — wheel';
+    // Driving / walking.
+    if (inCar) {
+      this._prevCarX = this.car.x;
+      this._prevCarZ = this.car.z;
+      this.car.update(dt, this._driveInput(), this._nitroOwned());
+      // Colliders + water + world bounds. Slide along the obstacle when
+      // possible (axis-separated move); if fully blocked, hold position but
+      // KEEP the speed — the car revs against the wall instead of stopping
+      // dead, so a nitro run against the garage wall still reads its speed.
+      const _blockedAt = (x, z) => {
+        try {
+          if (collideCircle(this.city.colliders, x, z, 2)) return true;
+          if (this.city.isWater && this.city.isWater(x, z)) return true;
+        } catch (e) { /* ignore */ }
+        return false;
+      };
+      if (_blockedAt(this.car.x, this.car.z)) {
+        if (!_blockedAt(this.car.x, this._prevCarZ)) {
+          this.car.setPos(this.car.x, this._prevCarZ, this.car.heading);
+        } else if (!_blockedAt(this._prevCarX, this.car.z)) {
+          this.car.setPos(this._prevCarX, this.car.z, this.car.heading);
+        } else {
+          this.car.setPos(this._prevCarX, this._prevCarZ, this.car.heading);
+        }
+      } else if (this.city.clampToWorld) {
+        const [cx, cz] = this.city.clampToWorld(this.car.x, this.car.z);
+        if (cx !== this.car.x || cz !== this.car.z) this.car.setPos(cx, cz, this.car.heading);
+      }
+      this._chaseCam(dt, 7.2, 2.7, 0);
+    } else {
+      try {
+        if (this.player.update) {
+          // Player.update(dt, input, camYaw): the camera yaw (world direction
+          // from the camera to the player) makes W walk away from the camera.
+          // Without it the walk math goes NaN and the player freezes.
+          //
+          // Steering while running: the on-foot controller moves the player
+          // toward the input direction and turns the heading to match it,
+          // so raw A/D strafe (A would LOWER the heading) and a steering
+          // loop that expects A to RAISE it can never converge — and a
+          // fixed heading-relative offset just spins the player at the
+          // controller's full turn rate. Instead, steer a separate target
+          // heading (_footSteer) at a modest rate while running forward and
+          // aim the movement at it: A turns left, D turns right, at a rate
+          // a steering loop can control. Off the throttle (strafe / backup)
+          // the plain camera yaw applies, so A-only still strafes.
+          let camYaw = this.player.heading || 0;
+          const dx = this.player.x - this.camera.position.x;
+          const dz = this.player.z - this.camera.position.z;
+          if (isFinite(dx) && isFinite(dz) && (dx !== 0 || dz !== 0)) camYaw = Math.atan2(dx, dz);
+          try {
+            const wx = (this.input && typeof this.input.walkX === 'number') ? this.input.walkX : 0;
+            const wy = (this.input && typeof this.input.walkY === 'number') ? this.input.walkY : 0;
+            if (wy > 0) {
+              if (!this._footSteerInit) { this._footSteer = this.player.heading || 0; this._footSteerInit = true; }
+              const STEER = 1.2; // rad/s while running forward
+              if (wx < 0) this._footSteer += STEER * dt;
+              else if (wx > 0) this._footSteer -= STEER * dt;
+              else this._footSteer = this.player.heading || 0;
+              // Keep the target wrapped so it stays near the heading.
+              while (this._footSteer > Math.PI) this._footSteer -= Math.PI * 2;
+              while (this._footSteer < -Math.PI) this._footSteer += Math.PI * 2;
+              // movement = camYaw + atan2(wx, wy); aim it at _footSteer.
+              camYaw = this._footSteer - Math.atan2(wx, wy);
+            } else {
+              this._footSteerInit = false;
+            }
+          } catch (e) { /* ignore */ }
+          this.player.update(dt, this.input, camYaw);
+        }
+      } catch (e) { /* ignore */ }
+      this._footCam(dt);
     }
 
-    // Audio.
+    // Police, traffic, pedestrians, combat tick.
     try {
-      this.audio.setEngine(this.player.inCar ? Math.abs(this.car.speed) : 0);
-      this.audio.setSiren(this.police.wanted > 0);
-    } catch (e) { /* no audio */ }
+      if (this.police.update) this.police.update(dt, this.player.inCar ? this.car.x : this.player.x, this.player.inCar ? this.car.z : this.player.z, this.player.inCar ? this.car : null, null);
+    } catch (e) { /* ignore */ }
+    try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+    try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+    try { if (this.combat.update) this.combat.update(dt); } catch (e) { /* ignore */ }
 
-    // Camera.
-    if (this.player.inCar) this._chaseCam(dt, 7.2, 2.7, 0);
-    else this._footCam(dt);
+    // Mission stage progression + race.
+    this._updateMission(dt);
+    this._updateRace(dt);
+  }
+
+  _updateMission(dt) {
+    const job = this._activeJob();
+    if (!job) return;
+    // Race jobs resolve through the race, not the generic stage checks.
+    const isRace = job.raceId || job.race || job.type === 'race' || job.id === 'M9';
+    if (isRace) return;
+    const stages = job.stages || [];
+    if (!stages.length) return;
+    const stage = stages[this._stageIndex];
+    if (!stage) {
+      this._completeJob(job);
+      return;
+    }
+    const inCar = !!this.player.inCar;
+    const cx = inCar ? this.car.x : this.player.x;
+    const cz = inCar ? this.car.z : this.player.z;
+    const text = stage.text || '';
+    let done = false;
+    const target = this._jobTarget(job, stage);
+    if (target) {
+      if (Math.hypot(cx - target[0], cz - target[1]) < 10) done = true;
+    } else if (/steal|enter|get in|take the|grab/i.test(text)) {
+      // Steal stage: counts once the car has been driven a little way,
+      // so starting the job while already seated does not skip the stage.
+      if (inCar && this._jobStartPos) {
+        const driven = Math.hypot(this.car.x - this._jobStartPos.x, this.car.z - this._jobStartPos.z);
+        if (driven > 15) done = true;
+      }
+    } else if (/race/i.test(text)) {
+      done = false;
+    } else if (/lose|escape|evade/i.test(text)) {
+      if (this.police && this.police.wanted === 0) done = true;
+    } else if (/deliver|drive|go to|reach|head to|take it/i.test(text)) {
+      if (target) done = Math.hypot(cx - target[0], cz - target[1]) < 10;
+    }
+    if (done) {
+      this._stageIndex++;
+      if (this._stageIndex >= stages.length) {
+        this._completeJob(job);
+      } else {
+        const next = stages[this._stageIndex];
+        if (next && next.text) this.hud.toast('Stage ' + (this._stageIndex + 1) + '/' + stages.length + ': ' + next.text);
+      }
+    }
+  }
+
+  _updateRace(dt) {
+    let active = false;
+    try { active = !!(this.races && this.races.active); } catch (e) { active = false; }
+    if (active) {
+      // Races.update(dt, car) — it takes the CAR OBJECT. update(dt, x, z)
+      // does not throw, it just never registers a checkpoint (it reads
+      // .x/.z off the number), so the car form goes first.
+      try {
+        if (this.races.update) this.races.update(dt, this.car);
+      } catch (e) {
+        try { if (this.races.update) this.races.update(dt, this.car.x, this.car.z); } catch (e2) { /* ignore */ }
+      }
+      try { active = !!(this.races && this.races.active); } catch (e) { active = false; }
+    }
+    if (this._raceActive && !active) {
+      // Race finished: prize + best time. No save here — the win toast
+      // must not be overwritten by an autosave toast.
+      this._raceActive = false;
+      const raceId = this._raceId || 'strand-gp';
+      const secs = Math.max(0.1, this.elapsed - this._raceStart);
+      let best = secs;
+      try {
+        if (this.races && typeof this.races.bestTime === 'function') {
+          const b = this.races.bestTime(raceId);
+          if (typeof b === 'number') best = b;
+        } else if (this.races && this.races.best && typeof this.races.best[raceId] === 'number') {
+          best = this.races.best[raceId];
+        } else if (this.races && this.races.bestTimes && typeof this.races.bestTimes[raceId] === 'number') {
+          best = this.races.bestTimes[raceId];
+        }
+      } catch (e) { /* ignore */ }
+      this._raceBest[raceId] = best;
+      this.cash += 4000;
+      this.hud.toast('Won Strand Grand Prix — +$4,000 · Best ' + formatClock(best) + ' — NEW BEST!');
+      if (this._jobId === 'M9') {
+        this._done.add('M9');
+        this._jobId = null;
+        this._stageIndex = 0;
+      }
+    }
+  }
+
+  _completeJob(job) {
+    const rewardCash = (job.reward && job.reward.cash) || job.rewardCash || 2500;
+    const rewardRp = (job.reward && job.reward.rp) || job.rewardRp || 120;
+    this.cash += rewardCash;
+    this.rp += rewardRp;
+    this._done.add(job.id);
+    this._jobId = null;
+    this._stageIndex = 0;
+    this.hud.toast('Job complete: ' + job.name + ' — +$' + rewardCash.toLocaleString('en-US') + ' · +' + rewardRp + ' RP');
+    this.saveGame();
+  }
+
+  _toggleEnterCar() {
+    if (this.player.inCar) {
+      // Step out beside the car.
+      const h = this.car.heading;
+      const px = this.car.x - Math.sin(h) * 2.5;
+      const pz = this.car.z - Math.cos(h) * 2.5;
+      this.player.setPos(px, pz, h);
+      this.player.inCar = false;
+      if (this.player.group) this.player.group.visible = true;
+    } else {
+      const d = Math.hypot(this.player.x - this.car.x, this.player.z - this.car.z);
+      if (d < 5) {
+        this.player.inCar = true;
+        if (this.player.group) this.player.group.visible = false;
+        this.hud.toast(this.car.name + ' — yours now');
+      } else {
+        this.hud.toast('Too far from the car');
+      }
+    }
+  }
+
+  _togglePause() {
+    if (this.mode === 'playing') {
+      this.mode = 'paused';
+      try { if (this.ui.showPause) this.ui.showPause(); } catch (e) { /* ignore */ }
+    } else if (this.mode === 'paused') {
+      this.mode = 'playing';
+      try { if (this.ui.hidePause) this.ui.hidePause(); else if (this.ui.hideAll) this.ui.hideAll(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  _toggleShop() {
+    if (this._shopOpen) {
+      this.hud.hideShop();
+      this._shopOpen = false;
+      return;
+    }
+    const gx = WORLD.garage.x;
+    const gz = WORLD.garage.z;
+    const d = Math.hypot(this.car.x - gx, this.car.z - gz);
+    if (d > 80) {
+      this.hud.toast('Get to Alba Garage to open the shop');
+      return;
+    }
+    this.hud.showShop(GARAGE_UPGRADES, this.cash, this._ownedUpgrades, (item) => this._onBuy(item));
+    this._shopOpen = true;
+  }
+
+  _onBuy(item) {
+    if (this._ownedUpgrades.has(item.id)) return;
+    if (this.cash < item.price) {
+      this.hud.setShopMessage('Not enough cash for ' + item.name);
+      return;
+    }
+    this.cash -= item.price;
+    this._ownedUpgrades.add(item.id);
+    try { if (this.garage && typeof this.garage.buy === 'function') this.garage.buy(item.id); } catch (e) { /* ignore */ }
+    this.hud.setShopMessage('Purchased ' + item.name);
+    this.hud.showShop(GARAGE_UPGRADES, this.cash, this._ownedUpgrades, (it) => this._onBuy(it));
+  }
+
+  _openWheel() {
+    this._wheelOpen = true;
+    const weapons = (this.combat.weapons || []).map((w, i) => ({
+      name: w.name, ammo: w.ammo, locked: !w.unlocked,
+      selected: i === this.combat.selected,
+      lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED'
+    }));
+    this.hud.showWheel(weapons, this.combat.selected || 0, null);
+    // The wheel must never overlap the dispatch panel: hide dispatch.
+    if (this.hud.dispatchEl) this.hud.dispatchEl.style.display = 'none';
+  }
+
+  _closeWheel() {
+    this._wheelOpen = false;
+    this.hud.hideWheel();
+    if (this.hud.dispatchEl) this.hud.dispatchEl.style.display = 'block';
+  }
+
+  _cycleWeapon() {
+    const n = (this.combat.weapons || []).length;
+    if (!n) return;
+    this.combat.selected = ((this.combat.selected || 0) + 1) % n;
+    const w = this.combat.weapons[this.combat.selected];
+    if (w) this.hud.toast(w.name + (w.unlocked ? '' : ' (LOCKED)'));
+  }
+
+  _crewSlipstream() {
+    const c = this.crew[0];
+    if (!c || !c.ready) return;
+    c.ready = false;
+    c.cooldown = c.cooldownMax;
+    this.car.slipstream = 5;
+    this.hud.toast('Slipstream! Kiki pulls you through the pack');
+  }
+
+  _crewLoopFeeds() {
+    const c = this.crew[1];
+    if (!c || !c.ready) return;
+    c.ready = false;
+    c.cooldown = c.cooldownMax;
+    try {
+      const w = (this.police && this.police.wanted) || 0;
+      if (this.police.setWanted) this.police.setWanted(Math.max(0, w - 1));
+    } catch (e) { /* ignore */ }
+    this.hud.toast('Loop Feeds — cameras looped, heat down');
+  }
+
+  _crewRam() {
+    const c = this.crew[2];
+    if (!c || !c.ready) return;
+    c.ready = false;
+    c.cooldown = c.cooldownMax;
+    let target = null;
+    let best = 1e9;
+    try {
+      for (const pc of (this.police.cars || [])) {
+        const d = Math.hypot(pc.x - this.car.x, pc.z - this.car.z);
+        if (d < best) { best = d; target = pc; }
+      }
+    } catch (e) { /* ignore */ }
+    if (target && best < 25) {
+      target.damage(100);
+      this.hud.toast('Ram! Dario wrecked a cruiser');
+    } else {
+      this.hud.toast('Ram! Dario is ready — no cruiser in range');
+    }
+  }
+
+  _shoot() {
+    // Drive-by: shooting works from the car too (the playtest shoots
+    // without ever stepping out). Muzzle sits at the car's nose in a car.
+    const inCar = !!this.player.inCar;
+    const h = inCar ? this.car.heading : this.player.heading;
+    const ox = inCar ? this.car.x : this.player.x;
+    const oz = inCar ? this.car.z : this.player.z;
+    let cur = null;
+    try {
+      cur = this.combat.current ? this.combat.current() : this.combat.weapons[this.combat.selected];
+    } catch (e) { cur = null; }
+    if (!cur) return;
+    if (cur.ammo !== undefined && cur.ammo !== null && cur.ammo <= 0) {
+      this.hud.toast('Out of ammo — ' + cur.name);
+      return;
+    }
+    let fired = false;
+    let shot = null;
+    try {
+      // Combat.tryFire(heading) is the real shot: it spends one ammo and
+      // returns the shot. (There is no combat.shoot/fire in this build.)
+      // tryFire returns null when it declines (same-heading dedup) — a
+      // click must still spend the ammo, so treat null as "not fired".
+      if (this.combat.tryFire && typeof this.combat.tryFire === 'function') {
+        shot = this.combat.tryFire(h);
+        fired = (shot !== null && shot !== undefined);
+      }
+      else if (this.combat.shoot && typeof this.combat.shoot === 'function') { this.combat.shoot(); fired = true; }
+      else if (this.combat.fire && typeof this.combat.fire === 'function') { this.combat.fire(); fired = true; }
+    } catch (e) { fired = false; shot = null; }
+    if (!fired && cur.ammo !== undefined && cur.ammo !== null) cur.ammo -= 1;
+    const mx = ox + Math.sin(h) * 1.2;
+    const mz = oz + Math.cos(h) * 1.2;
+    this.effects.muzzle(mx, 1.5, mz);
   }
 
   _chaseCam(dt, dist, height, side) {
@@ -683,134 +1186,34 @@ export class Game {
   }
 
   _footCam(dt) {
-    const h = this.camHeading;
+    const h = this.player.heading;
     const fx = Math.sin(h);
     const fz = Math.cos(h);
-    const tx = this.player.x - fx * 5.5;
-    const tz = this.player.z - fz * 5.5;
+    const rx = -Math.cos(h);
+    const rz = Math.sin(h);
+    const px = this.player.x;
+    const pz = this.player.z;
+    const tx = px - fx * 5.5 + rx * 1.2;
+    const tz = pz - fz * 5.5 + rz * 1.2;
     const k = 1 - Math.exp(-dt * 8);
     this.camera.position.x += (tx - this.camera.position.x) * k;
     this.camera.position.y += (2.6 - this.camera.position.y) * k;
     this.camera.position.z += (tz - this.camera.position.z) * k;
-    this.camera.lookAt(this.player.x + fx * 6, 1.4, this.player.z + fz * 6);
+    this.camera.lookAt(px + fx * 8, 1.4, pz + fz * 8);
   }
-
-  _crewSlipstream() {
-    const c = this.crew[0];
-    if (!c.ready || !this.player.inCar) return;
-    this.car.slipstream = 5;
-    c.cooldown = c.cooldownMax;
-    c.ready = false;
-    this.hud.toast('Slipstream!');
-  }
-
-  _crewLoopFeeds() {
-    const c = this.crew[1];
-    if (!c.ready || this.police.wanted <= 0) return;
-    this.police.setWanted(this.police.wanted - 1);
-    this._recolorPolice();
-    c.cooldown = c.cooldownMax;
-    c.ready = false;
-    this.hud.toast('Loop Feeds — one star dropped');
-  }
-
-  _crewRam() {
-    const c = this.crew[2];
-    if (!c.ready || this.ramCooldown > 0) return;
-    const px = this.player.inCar ? this.car.x : this.player.x;
-    const pz = this.player.inCar ? this.car.z : this.player.z;
-    let best = null;
-    let bestD = 80;
-    for (const car of this.police.cars) {
-      const d = Math.hypot(car.x - px, car.z - pz);
-      if (d < bestD) { bestD = d; best = car; }
-    }
-    c.cooldown = c.cooldownMax;
-    c.ready = false;
-    this.ramCooldown = 1;
-    if (best) {
-      this.effects.explosion(best.x, best.z, 1);
-      const i = this.police.cars.indexOf(best);
-      if (i >= 0) this.police.cars.splice(i, 1);
-      best.dispose();
-      this.police.rebuildDispatch();
-      this.hud.toast('Dario wrecked a cruiser!');
-    } else {
-      this.hud.toast('No cruiser in range');
-    }
-  }
-
-  _shoot() {
-    const now = Date.now();
-    const inCar = !!this.player.inCar;
-    const ox = inCar ? this.car.x : this.player.x;
-    const oz = inCar ? this.car.z : this.player.z;
-    const heading = inCar ? this.car.heading : this.player.heading;
-    const shot = this.combat.tryFire(now, ox, oz, heading);
-    if (!shot) return;
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
-    this.effects.muzzle(ox + fx * 2.5, 1.5, oz + fz * 2.5);
-    try { this.audio.shot(); } catch (e) { /* no audio */ }
-    // Resolve the shot against police + traffic cars in front of the player.
-    const targets = [];
-    for (const car of this.police.cars) targets.push({ car, police: true });
-    for (const t of this.traffic.cars) targets.push({ car: t.car, police: false });
-    for (const t of targets) {
-      const dx = t.car.x - ox;
-      const dz = t.car.z - oz;
-      const d = Math.hypot(dx, dz);
-      if (d > shot.range || d < 1) continue;
-      const ang = Math.abs(angleDiff(heading, Math.atan2(dx, dz)));
-      if (ang > 0.35) continue;
-      t.car.damage(shot.damage);
-      this.effects.sparks(t.car.x, 1.2, t.car.z);
-      if (t.car.condition <= 0) {
-        this.effects.explosion(t.car.x, t.car.z, 1);
-        if (t.police) {
-          const i = this.police.cars.indexOf(t.car);
-          if (i >= 0) this.police.cars.splice(i, 1);
-          this.police.rebuildDispatch();
-        } else {
-          this.traffic.removeCar(t.car);
-        }
-        t.car.dispose();
-      }
-    }
-  }
-
-  // ---------- Screenshot staging ----------
 
   _stageProgression(cash, rp, activeJobId) {
     this.cash = cash;
     this.rp = rp;
-    const done = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7'];
-    if (!activeJobId) done.push('M8');
-    this.missions.restore(done);
-    this._knownDone = [...done];
-    this.combat.unlockForJob('M3');
-    this.combat.unlockForJob('M5');
-    this.combat.unlockForJob('M7');
-    const standings = [
-      ['The Strand', 62], ['Marina Row', 48], ['Commerce Row', 35],
-      ['Causeway', 28], ['The Island', 20],
-    ];
-    for (const [name, n] of standings) {
-      try { this.districts.addStanding(name, n); } catch (e) { /* ignore */ }
+    if (JOBS) {
+      const idx = activeJobId ? JOBS.findIndex((j) => j.id === activeJobId) : JOBS.length;
+      const doneUpTo = idx < 0 ? JOBS.length : idx;
+      for (let i = 0; i < doneUpTo; i++) this._done.add(JOBS[i].id);
     }
-    this.districts.current = 'The Strand';
-    try { this.districts.updatePosition(0, 215); } catch (e) { /* ignore */ }
-    this.districts.current = 'The Strand';
-    this.garage.restore({ nitro: true, engine: true, armor: true });
-    this.garage.applyTo(this.car);
-    this.car.repair();
-    this.car.nitro = 100;
-    this.timeOfDay = 18.1;
-    this.audio.song = 'Golden Hour Drive';
-    this.audio.station = 'ALBA FM 98.1';
-    if (activeJobId) {
-      this.missions.start(activeJobId);
-    }
+    this._jobId = activeJobId || null;
+    this._stageIndex = 0;
+    this._jobStartPos = { x: this.car.x, z: this.car.z };
+    this._jobStartTime = this.elapsed;
   }
 
   _applyShot(shot) {
@@ -822,27 +1225,206 @@ export class Game {
     else this._stageChase();
   }
 
+  _stageChase() {
+    this._stageProgression(24500, 1100, 'M8');
+    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
+    this._shotStageText = 'Deliver the bag on the Strand';
+    const job = this.missions.job('M8');
+    if (job && job.dialogue && job.dialogue[1]) this.dialogue = this._parseDialogue(job.dialogue[1]);
+    this.dialogueT = 9999;
+    this.player.inCar = true;
+    if (this.player.group) this.player.group.visible = false;
+    this.car.setPos(-40, 200, 1.57);
+    this.car.speed = 42.5;
+    this.camHeading = 1.57;
+    this.police.setWanted(5);
+    this.police.syncUnits(-40, 200, 1.57);
+    // Roadblock ahead on the Strand.
+    const block = new Car(THREE, this.scene, {
+      x: -25, z: 200, heading: 1.57 + Math.PI / 2, color: 0x1a1a2a,
+      name: 'Interceptor', topSpeed: 31, accel: 16, isPolice: true
+    });
+    if (this.police.roadblock) this.police.roadblock.push(block);
+    this._recolorPolice();
+    // Traffic streaming past the chase.
+    const tOffsets = [
+      { dx: -14, dz: -8 }, { dx: 8, dz: 10 }, { dx: -22, dz: 6 }, { dx: 20, dz: -12 },
+      { dx: -8, dz: 14 }, { dx: 28, dz: 8 }, { dx: -30, dz: -4 }, { dx: 12, dz: -16 }
+    ];
+    try {
+      const cars = this.traffic.cars || [];
+      cars.forEach((t, i) => {
+        const off = tOffsets[i % tOffsets.length];
+        t.setPos(-40 + off.dx, 200 + off.dz, 1.57);
+        t.speed = 46;
+      });
+    } catch (e) { /* ignore */ }
+    // Close dispatch: units 13-25m out, three within 15m.
+    this._stagedPolice = [
+      { dx: 12, dz: -6 }, { dx: 10, dz: 8 }, { dx: 8, dz: -10 }, { dx: 18, dz: 6 }, { dx: 25, dz: -3 }
+    ];
+    this._pinPolice('chase');
+    this._nextBoom = Date.now() + 4000;
+    // Sun in frame, ahead and high: halo + core sprites.
+    const sunStops = [[0, 'rgba(255,250,220,1)'], [0.4, 'rgba(255,200,120,0.85)'], [1, 'rgba(255,120,40,0)']];
+    const halo = this.effects._sprite(sunStops, 90, 0.9, true, this.car.x + 280, 120, 190);
+    const core = this.effects._sprite(sunStops, 36, 1, true, this.car.x + 280, 120, 190);
+    this._chaseSun = { halo: halo, core: core };
+  }
+
+  _stageBriefing() {
+    this._stageProgression(24500, 1100, 'M8');
+    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
+    this._shotStageText = 'Deliver the bag on the Strand';
+    const job = this.missions.job('M8');
+    if (job && job.dialogue && job.dialogue[0]) this.dialogue = this._parseDialogue(job.dialogue[0]);
+    this.dialogueT = 9999;
+    const objectives = (job && (job.objectives || (job.stages || []).map((s) => s.text))) || [this._shotStageText];
+    this.briefing = {
+      title: 'M8 — The Debt Paid',
+      giver: 'Don Rafael Alba · Don of Alba',
+      job: 'One bag, one handoff, no mistakes.',
+      objectives: objectives,
+      reward: '$15,000',
+      cash: '$24,500'
+    };
+    this.police.setWanted(1);
+    this.police.syncUnits(2, 200, 0.35);
+    this._recolorPolice();
+    try {
+      if (this.police.cars && this.police.cars[0]) this.police.cars[0].setPos(-45, 168, 1.57);
+    } catch (e) { /* ignore */ }
+    this.car.setPos(-46, 196, 1.57);
+    this.car.speed = 0;
+    this.player.inCar = false;
+    if (this.player.group) this.player.group.visible = true;
+    this.player.setPos(-43, 198.5, 1.57);
+    // The briefing street is alive: a patrol unit responding in the
+    // background plus a little traffic, at wanted 1.
+    const tSpots = [
+      { x: 10, z: 200 }, { x: 30, z: 196 }, { x: -20, z: 204 }, { x: 58, z: 200 },
+      { x: -70, z: 196 }, { x: 84, z: 204 }, { x: -100, z: 200 }, { x: 110, z: 196 }
+    ];
+    try {
+      const cars = this.traffic.cars || [];
+      cars.forEach((t, i) => {
+        const s = tSpots[i % tSpots.length];
+        t.setPos(s.x, s.z, 1.57);
+        t.speed = 12;
+      });
+    } catch (e) { /* ignore */ }
+    this._shotCam = { pos: [13, 4.2, 213], look: [0, 1.2, 201] };
+    this.camera.position.set(13, 4.2, 213);
+    this.camera.lookAt(0, 1.2, 201);
+  }
+
+  _stageCombat() {
+    this._stageProgression(24100, 1150, 'M8');
+    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
+    this._shotStageText = 'Lose the 5-star heat';
+    const job = this.missions.job('M8');
+    if (job && job.dialogue && job.dialogue[1]) this.dialogue = this._parseDialogue(job.dialogue[1]);
+    this.dialogueT = 9999;
+    this.player.setPos(-20, 200, 1.57);
+    this.player.inCar = false;
+    if (this.player.group) this.player.group.visible = true;
+    this.car.setPos(-34, 204, 1.57);
+    this.car.speed = 0;
+    this.police.setWanted(3);
+    this.police.syncUnits(-20, 200, 1.57);
+    this._recolorPolice();
+    this._pinPolice('combat');
+    // Visible gun in hand, held forward and aimed — on the camera side of
+    // the player so its profile reads from the rear camera, not a bar at
+    // the shoulder. Player local -X is the camera side (south).
+    try {
+      const gun = new THREE.Group();
+      const gunMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, roughness: 0.4, metalness: 0.7 });
+      const barrelMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.35, metalness: 0.8 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.16, 0.62), gunMat);
+      gun.add(body);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8), barrelMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.02, 0.5);
+      gun.add(barrel);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.11), gunMat);
+      grip.position.set(0, -0.15, -0.2);
+      grip.rotation.x = 0.25;
+      gun.add(grip);
+      // Held out to the side of the torso, pointing along the player's
+      // forward, so its side profile reads from the rear camera.
+      gun.position.set(-0.62, 1.25, 0.45);
+      gun.rotation.x = 0;
+      if (this.player.group) this.player.group.add(gun);
+      this._gun = gun;
+    } catch (e) { /* ignore */ }
+    this._fireCombatBurst();
+    this._nextMuzzle = Date.now() + 250;
+    // Wheel open, dispatch hidden — they never overlap.
+    const weapons = (this.combat.weapons || []).map((w, i) => ({
+      name: w.name, ammo: w.ammo, locked: !w.unlocked,
+      selected: i === this.combat.selected,
+      lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED'
+    }));
+    this.hud.showWheel(weapons, this.combat.selected || 0, null);
+  }
+
+  _stageVista() {
+    this._stageProgression(24800, 1200, null);
+    this._shotMission = null;
+    this.player.inCar = true;
+    if (this.player.group) this.player.group.visible = false;
+    this.car.setPos(40, 200, 1.57);
+    this.car.speed = 0;
+    if (this.city.sunBall) this.city.sunBall.scale.set(1.8, 1.8, 1.8);
+    this._addLensFlare();
+    this._shotCam = { pos: [130, 120, 40], look: [-160, 50, 330] };
+    this.camera.position.set(130, 120, 40);
+    this.camera.lookAt(-160, 50, 330);
+  }
+
+  _fireCombatBurst() {
+    const h = this.player.heading;
+    const mx = this.player.x + Math.sin(h) * 1.1;
+    const mz = this.player.z + Math.cos(h) * 1.1;
+    this.effects.muzzle(mx, 1.5, mz);
+    // Hit effect on the closest cruiser: sparks + smoke + damage flash.
+    let target = null;
+    let best = 1e9;
+    try {
+      for (const pc of (this.police.cars || [])) {
+        const d = Math.hypot(pc.x - this.player.x, pc.z - this.player.z);
+        if (d < best) { best = d; target = pc; }
+      }
+    } catch (e) { /* ignore */ }
+    if (target) {
+      this.effects.sparks(target.x, 1.2, target.z);
+      this.effects.smoke(target.x, 1.5, target.z);
+      try { target.damage(1); } catch (e) { /* ignore */ }
+    }
+  }
+
   _recolorPolice() {
-    const cars = [...this.police.cars, ...this.police.roadblock];
+    const cars = [];
+    try {
+      if (this.police.cars) for (const c of this.police.cars) cars.push(c);
+      if (this.police.roadblock) for (const c of this.police.roadblock) cars.push(c);
+    } catch (e) { /* ignore */ }
     for (const car of cars) {
+      if (!car.mesh) continue;
       car.mesh.traverse((o) => {
-        if (o.isMesh && o.material && o.material.color && o.material.color.getHex
-          && o.material.color.getHex() === 0x1a1a2a) {
+        if (o.isMesh && o.material && o.material.color && o.material.color.getHex && o.material.color.getHex() === 0x1a1a2a) {
           o.material.color.setHex(0xf2f2f2);
         }
       });
     }
-    this._recolored = true;
   }
 
-  // Pin the heli low and ahead in staged shots so it is actually in frame
-  // (the default follow puts it 18m up, above the camera's view). The cone
-  // and ground pool are re-fit to the lower height.
   _pinHeli(px, pz, dx, dz) {
     const h = this.police.heli;
     if (!h) return;
     const H = 11;
-    h.group.position.set(px + dx, H, pz + dz);
+    if (h.group) h.group.position.set(px + dx, H, pz + dz);
     if (h.cone) {
       h.cone.position.y = -H / 2;
       h.cone.scale.y = H / 18;
@@ -859,238 +1441,43 @@ export class Game {
     const fz = Math.cos(heading);
     const rx = -Math.cos(heading);
     const rz = Math.sin(heading);
-    for (let i = 0; i < this.police.cars.length; i++) {
-      const off = this._stagedPolice[i % this._stagedPolice.length];
-      if (!off) continue;
-      const wx = px + fx * off.dx + rx * off.dz;
-      const wz = pz + fz * off.dx + rz * off.dz;
-      let h = heading;
-      if (off.face) h = Math.atan2(px - wx, pz - wz);
-      const car = this.police.cars[i];
-      car.setPos(wx, wz, h);
-      car.speed = 8;
-    }
-    this.police.rebuildDispatch();
-  }
-
-  _stageChase() {
-    this._stageProgression(24500, 1100, 'M8');
-    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
-    this._shotStageText = 'Deliver the bag on the Strand';
-    const job = this.missions.job('M8');
-    this.dialogue = this._parseDialogue(job.dialogue[1]);
-    this.dialogueT = 9999;
-    this.player.inCar = true;
-    this.player.group.visible = false;
-    this.car.setPos(-40, 200, 1.57);
-    this.car.speed = 42.5;
-    this.camHeading = 1.57;
-    this.police.setWanted(5);
-    this.police.syncUnits(-40, 200, 1.57);
-    const rb = new Car(THREE, this.scene, {
-      x: -25, z: 200, heading: 1.57 + Math.PI / 2, color: 0x1a1a2a,
-      name: 'Interceptor', topSpeed: 31, accel: 16, isPolice: true,
-    });
-    this.police.roadblock.push(rb);
-    this._recolorPolice();
-    // Staged traffic ahead of the player, in the chase lane — faster than the
-    // player so it stays ahead (not giant foreground blobs alongside).
-    const tOffsets = [
-      { dx: 26, dz: -5 }, { dx: 30, dz: 5 }, { dx: 34, dz: -6 },
-      { dx: 38, dz: 6 }, { dx: 42, dz: 0 }, { dx: 28, dz: -8 },
+    const offs = this._stagedPolice || [
+      { dx: 10, dz: -6 }, { dx: 8, dz: 8 }, { dx: 14, dz: 2 }, { dx: 6, dz: -12 }, { dx: 18, dz: -4 }
     ];
-    this._stagedTraffic = [];
-    for (let i = 0; i < Math.min(6, this.traffic.cars.length); i++) {
-      const t = this.traffic.cars[i].car;
-      t.setPos(-40 + tOffsets[i].dx, 200 + tOffsets[i].dz, 1.57);
-      t.speed = 46;
-      this._stagedTraffic.push(t);
-    }
-    // Police close in: three units within 15m, all ahead in frame.
-    this._stagedPolice = [
-      { dx: 12, dz: -6 }, { dx: 10, dz: 8 }, { dx: 8, dz: -10 },
-      { dx: 18, dz: 6 }, { dx: 25, dz: -3 },
-    ];
-    this._pinPolice('chase');
-    this._nextBoom = Date.now() + 4000;
-    // Sun in frame: bright disc + halo ahead-east, high in the sky.
-    const halo = this.effects._sprite(
-      [[0, 'rgba(255,250,220,1)'], [0.4, 'rgba(255,200,120,0.85)'], [1, 'rgba(255,120,40,0)']],
-      110, 0.95, true, 240, 120, 190
-    );
-    const core = this.effects._sprite(
-      [[0, 'rgba(255,255,240,1)'], [0.6, 'rgba(255,230,160,1)'], [1, 'rgba(255,200,100,0)']],
-      34, 1, true, 240, 120, 190
-    );
-    this.scene.add(halo);
-    this.scene.add(core);
-    this._chaseSun = { halo, core };
-    this.hint = '';
-  }
-
-  _stageBriefing() {
-    this._stageProgression(24500, 1100, 'M8');
-    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
-    this._shotStageText = 'Deliver the bag on the Strand';
-    const job = this.missions.job('M8');
-    this.dialogue = this._parseDialogue(job.dialogue[0]);
-    this.dialogueT = 9999;
-    this.briefing = {
-      title: 'The Debt — Final Job',
-      giver: 'Don Rafael Alba',
-      role: 'Don of Alba',
-      objectives: ['Deliver the bag on the Strand', 'Lose the 5-star heat', 'Collect $15,000 from the Don'],
-      reward: '$15,000',
-    };
-    // One patrol unit responding in the background + a little traffic.
-    this.police.clearAll();
-    this.police.setWanted(1);
-    this.police.syncUnits(2, 200, 0.35);
-    if (this.police.cars[0]) this.police.cars[0].setPos(-45, 168, 1.57);
-    this._recolorPolice();
-    // The player's own ride, parked at the edge of the frame.
-    this.car.setPos(-46, 196, 1.57);
-    this.car.speed = 0;
-    // The Comet GT, whole car in frame, player standing beside it.
-    this._briefingCar = new Car(THREE, this.scene, {
-      x: 2, z: 200, heading: 0.35, color: 0x2ad8c8,
-      name: 'Comet GT', topSpeed: 34, spoiler: true,
-    });
-    this.player.inCar = false;
-    this.player.group.visible = true;
-    this.player.standBesideCar(this._briefingCar);
-    // Traffic passing behind the briefing.
-    const tSpots = [[-70, 196, 1.57], [-25, 214, 1.57], [35, 178, -1.57]];
-    for (let i = 0; i < Math.min(3, this.traffic.cars.length); i++) {
-      const t = this.traffic.cars[i].car;
-      t.setPos(tSpots[i][0], tSpots[i][1], tSpots[i][2]);
-      t.speed = 12;
-    }
-    this._shotCam = { pos: [13, 4.2, 213], look: [0, 1.2, 201] };
-    this.camera.position.set(13, 4.2, 213);
-    this.camera.lookAt(0, 1.2, 201);
-    this.hint = '';
-  }
-
-  _stageCombat() {
-    this._stageProgression(24100, 1150, 'M8');
-    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
-    this._shotStageText = 'Lose the 5-star heat';
-    const job = this.missions.job('M8');
-    this.dialogue = this._parseDialogue(job.dialogue[1]);
-    this.dialogueT = 9999;
-    this.player.setPos(-20, 200, 1.57);
-    this.player.inCar = false;
-    this.player.group.visible = true;
-    this.car.setPos(-34, 204, 1.57);
-    this.car.speed = 0;
-    this.police.setWanted(3);
-    this.police.syncUnits(-20, 200, 1.57);
-    this._recolorPolice();
-    // One cruiser close and facing the player, two more flanking (all facing in).
-    this._stagedPolice = [
-      { dx: 14, dz: 0, face: true }, { dx: 22, dz: -6, face: true }, { dx: 28, dz: 6, face: true },
-    ];
-    this._pinPolice('combat');
-    this.combat.select(1);
-    this.wheelOpen = true;
-    // Wheel shifted right so the player, gun, muzzle and police stay visible
-    // in the 3D scene (center of frame is the action, not the panel).
-    this.hud.showWheel(this.combat.unlockedWeapons(), 1, { left: '62%', top: '16%' });
-    // SMG visible in the player's hand — light metal so it reads against the
-    // dark road, long barrel jutting past the shoulder.
-    const gun = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.26, 1.3),
-      new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.35, metalness: 0.8 })
-    );
-    gun.position.set(-0.55, 1.3, 0.95);
-    gun.rotation.x = -0.12;
-    this.player.group.add(gun);
-    this._combatGun = gun;
-    this._fireCombatBurst();
-    this._nextMuzzle = Date.now() + 400;
-    this.hint = '';
-  }
-
-  _fireCombatBurst() {
-    const h = this.player.heading;
-    const fx = Math.sin(h);
-    const fz = Math.cos(h);
-    const mx = this.player.x + fx * 2.5;
-    const mz = this.player.z + fz * 2.5;
-    this.effects.muzzle(mx, 1.5, mz);
-    // Hit effect on the closest cruiser: sparks + smoke + damage flash.
-    let target = null;
-    let bestD = 1e9;
-    for (const car of this.police.cars) {
-      const d = Math.hypot(car.x - this.player.x, car.z - this.player.z);
-      if (d < bestD) { bestD = d; target = car; }
-    }
-    if (target) {
-      this.effects.sparks(target.x, 1.2, target.z);
-      this.effects.smoke(target.x, 1.8, target.z);
-      const flash = this.effects._sprite(
-        [[0, 'rgba(255,240,180,1)'], [0.5, 'rgba(255,160,50,0.8)'], [1, 'rgba(255,90,0,0)']],
-        5, 1, true, target.x, 1.4, target.z
-      );
-      this.effects._add(flash, 0.35, 1, { grow: 0.4 });
-    }
-  }
-
-  _stageVista() {
-    this._stageProgression(24800, 1200, null);
-    this._shotMission = null;
-    this.hint = 'Press M to start the next job';
-    this.police.clearAll();
-    this.player.inCar = true;
-    this.player.group.visible = false;
-    this.car.setPos(40, 200, 1.57);
-    this.car.speed = 0;
-    this.city.sunBall.scale.set(1.8, 1.8, 1.8);
-    if (this.city.sunGlow) this.city.sunGlow.scale.set(300, 300, 1);
-    this._shotCam = { pos: [130, 120, 40], look: [-160, 50, 330] };
-    this.camera.position.set(130, 120, 40);
-    this.camera.lookAt(-160, 50, 330);
-    this._addLensFlare();
-    // Pedestrians strolling the beach.
-    for (let i = 0; i < Math.min(12, this.pedestrians.walkers.length); i++) {
-      const w = this.pedestrians.walkers[i];
-      w.x = -40 + i * 15;
-      w.z = 248 + (i % 3) * 14;
-      if (w.group) w.group.position.set(w.x, 0, w.z);
-    }
-  }
-
-  _addLensFlare() {
-    const spots = [
-      { p: [-100, 115, 250], s: 10, c: [[0, 'rgba(255,255,255,0.9)'], [1, 'rgba(255,255,255,0)']] },
-      { p: [-200, 105, 320], s: 6, c: [[0, 'rgba(255,200,220,0.9)'], [1, 'rgba(255,200,220,0)']] },
-      { p: [-290, 100, 375], s: 15, c: [[0, 'rgba(180,220,255,0.8)'], [1, 'rgba(180,220,255,0)']] },
-    ];
-    this._vistaFlare = [];
-    for (const sp of spots) {
-      const s = this.effects._sprite(sp.c, sp.s, 0.85, true, sp.p[0], sp.p[1], sp.p[2]);
-      this.scene.add(s);
-      this._vistaFlare.push(s);
-    }
+    try {
+      const cars = this.police.cars || [];
+      cars.forEach((car, i) => {
+        const off = offs[i % offs.length];
+        const wx = px + fx * off.dx + rx * off.dz;
+        const wz = pz + fz * off.dx + rz * off.dz;
+        let h = heading;
+        if (off.face) h = Math.atan2(px - wx, pz - wz);
+        car.setPos(wx, wz, h);
+        car.speed = 8;
+      });
+      if (this.police.rebuildDispatch) this.police.rebuildDispatch();
+    } catch (e) { /* ignore */ }
   }
 
   _updateShot(dt) {
     const shot = this.shotMode;
+    // Police cars stay white in every shot, including fresh spawns.
+    if (shot !== 'vista') this._recolorPolice();
     if (shot === 'chase') {
-      // Hold the chase: speed + heading fixed, formation re-pinned.
-      this.car.update(dt, this.input, true);
+      this.car.update(dt, this._driveInput(), true);
       this.car.speed = 42.5;
       this.car.heading = 1.57;
       this.car.mesh.rotation.y = 1.57;
       const px = this.car.x;
       const pz = this.car.z;
-      this.police.update(dt, px, pz, this.car, null);
+      try { this.police.update(dt, px, pz, this.car, null); } catch (e) { /* ignore */ }
       this._pinPolice('chase');
       this._pinHeli(px, pz, 30, -10);
-      if (this.police.roadblock[0]) {
-        this.police.roadblock[0].setPos(px + 15, 200, 1.57 + Math.PI / 2);
-      }
+      try {
+        if (this.police.roadblock && this.police.roadblock[0]) {
+          this.police.roadblock[0].setPos(px + 15, 200, 1.57 + Math.PI / 2);
+        }
+      } catch (e) { /* ignore */ }
       if (Date.now() >= this._nextBoom) {
         this.effects.explosion(px + 18, 186, 0.9);
         this._nextBoom = Date.now() + 1200;
@@ -1100,52 +1487,60 @@ export class Game {
         this._chaseSun.core.position.set(px + 280, 120, 190);
       }
       this._chaseCam(dt, 7.2, 2.9, 4.5);
-      this.traffic.update(dt);
-      this.pedestrians.update(dt, []);
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
     } else if (shot === 'briefing') {
       const px = this.player.x;
       const pz = this.player.z;
-      this.police.update(dt, px, pz, null, null);
-      this.traffic.update(dt);
-      this.pedestrians.update(dt, []);
+      try { this.police.update(dt, px, pz, null, null); } catch (e) { /* ignore */ }
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
       if (this._shotCam) {
-        this.camera.position.set(...this._shotCam.pos);
-        this.camera.lookAt(...this._shotCam.look);
+        this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
+        this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
       }
     } else if (shot === 'combat') {
       const px = this.player.x;
       const pz = this.player.z;
-      this.police.update(dt, px, pz, null, null);
+      try { this.police.update(dt, px, pz, null, null); } catch (e) { /* ignore */ }
       this._pinPolice('combat');
       this._pinHeli(px, pz, 30, -10);
       if (Date.now() >= this._nextMuzzle) {
         this._fireCombatBurst();
         this._nextMuzzle = Date.now() + 250;
       }
-      this.traffic.update(dt);
-      this.pedestrians.update(dt, []);
-      // Camera behind the player, slightly to the side so the gun is visible.
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
       const h = this.player.heading;
       const fx = Math.sin(h);
       const fz = Math.cos(h);
       const rx = -Math.cos(h);
       const rz = Math.sin(h);
-      const k = 1 - Math.exp(-dt * 8);
       const tx = px - fx * 5.5 + rx * 1.2;
       const tz = pz - fz * 5.5 + rz * 1.2;
+      const k = 1 - Math.exp(-dt * 8);
       this.camera.position.x += (tx - this.camera.position.x) * k;
       this.camera.position.y += (2.6 - this.camera.position.y) * k;
       this.camera.position.z += (tz - this.camera.position.z) * k;
       this.camera.lookAt(px + fx * 8, 1.4, pz + fz * 8);
     } else if (shot === 'vista') {
-      this.traffic.update(dt);
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       if (this._shotCam) {
-        this.camera.position.set(...this._shotCam.pos);
-        this.camera.lookAt(...this._shotCam.look);
+        this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
+        this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
       }
     }
   }
+
+  _addLensFlare() {
+    try {
+      const stops = [[0, 'rgba(255,240,200,0.9)'], [0.5, 'rgba(255,190,110,0.4)'], [1, 'rgba(255,140,60,0)']];
+      // Big soft glow at the sun, plus two smaller ghosts toward the camera.
+      this.effects._sprite(stops, 320, 0.5, true, -420, 95, 420);
+      this.effects._sprite(stops, 60, 0.45, true, -300, 80, 330);
+      this.effects._sprite(stops, 34, 0.5, true, -190, 68, 250);
+    } catch (e) { /* ignore */ }
+  }
 }
 
-// Boot.
 new Game();

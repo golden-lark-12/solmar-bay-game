@@ -1,407 +1,468 @@
-// hud.js — Puerto Alba HUD: cash/rank/district, mission panel with stage +
-// next step, dispatch board, crew with drawn faces, minimap with streets +
-// route, weapon wheel, garage shop, briefing, dialogue, toasts.
+// hud.js — Puerto Alba HUD: mission + briefing panels, dispatch, rank ladder,
+// crew cards with drawn-face portraits, dialogue, weapon slots + wheel,
+// garage shop, minimap with streets / gold route / police dots, radio, toasts.
+
 export class Hud {
   constructor() {
-    this.root = document.getElementById('hud');
-    this.onShopClose = null;
-    this._shopBuy = null;
-    this._toastTimer = 0;
-    this._lastDispatch = '';
-    this._lastLadder = '';
-    this._wheelPinned = false;
+    this._textCache = {};
+    this._crewSig = '';
+    this._weaponSig = '';
+    this._ladderSig = '';
+    this._dispatchSig = null;
+    this._missionSig = '';
+    this._briefingSig = '';
+    this._dialogueSig = '';
+    this._toastTimer = null;
+    this.build();
   }
 
   el(tag, cls, parent) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (parent) parent.appendChild(e);
-    return e;
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (parent) parent.appendChild(n);
+    return n;
   }
 
-  // Simple drawn face: skin circle, hair cap in the character's color,
-  // two eyes, mouth. Reads as a portrait at contact-sheet size.
   _faceSVG(p) {
-    const skin = p.skin || '#e8b088';
-    const hair = p.hair || p.color || '#2a2a2a';
-    const mustache = p.mustache
-      ? '<path d="M17 30 Q22 33 27 30" stroke="#d8d8d8" stroke-width="2.4" fill="none" stroke-linecap="round"/>'
+    const skin = (p && p.skin) || '#e8b88a';
+    const hair = (p && p.hair) || '#2a1a12';
+    const accent = (p && p.color) || '#888888';
+    const mustache = p && p.mustache
+      ? '<ellipse cx="32" cy="42" rx="8" ry="3" fill="#c8c8c8"/>'
       : '';
-    return '<svg viewBox="0 0 44 44" width="100%" height="100%">'
-      + '<circle cx="22" cy="17" r="13" fill="' + hair + '"/>'
-      + '<circle cx="22" cy="25" r="12.5" fill="' + skin + '"/>'
-      + '<path d="M10 22 A12 12 0 0 1 34 22 L34 19 A12 10 0 0 0 10 19 Z" fill="' + hair + '"/>'
-      + '<circle cx="17" cy="25" r="1.8" fill="#1a1210"/>'
-      + '<circle cx="27" cy="25" r="1.8" fill="#1a1210"/>'
-      + '<path d="M18 31 Q22 34 26 31" stroke="#7a3a2a" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
-      + mustache
-      + '</svg>';
+    return '<svg viewBox="0 0 64 64" width="100%" height="100%">' +
+      '<circle cx="32" cy="32" r="31" fill="' + accent + '"/>' +
+      '<circle cx="32" cy="34" r="19" fill="' + skin + '"/>' +
+      '<path d="M13 32 Q13 12 32 12 Q51 12 51 32 L47 30 Q47 16 32 16 Q17 16 17 30 Z" fill="' + hair + '"/>' +
+      '<circle cx="25" cy="33" r="2.4" fill="#1a1a1a"/>' +
+      '<circle cx="39" cy="33" r="2.4" fill="#1a1a1a"/>' +
+      '<path d="M28 26 Q32 24 36 26" stroke="#1a1a1a" stroke-width="1.6" fill="none"/>' +
+      mustache +
+      '<path d="M26 47 Q32 51 38 47" stroke="#7a3a2a" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+      '</svg>';
   }
 
   build() {
-    const root = this.root;
-    root.innerHTML = '';
+    const style = document.createElement('style');
+    style.textContent = [
+      '.hud-root{position:fixed;inset:0;pointer-events:none;z-index:10;font-family:Arial,Helvetica,sans-serif;color:#fff}',
+      '.hud-panel{background:rgba(12,10,22,0.62);border:1px solid rgba(255,215,106,0.35);border-radius:10px;padding:10px 12px;box-shadow:0 2px 12px rgba(0,0,0,0.45)}',
+      '.hud-air{position:absolute;top:10px;left:50%;transform:translateX(-50%);text-align:center}',
+      '.hud-air-banner{display:inline-block;background:rgba(255,60,60,0.85);border-radius:6px;padding:5px 14px;font-weight:bold;font-size:15px;letter-spacing:1px;margin:0 4px}',
+      '.hud-insight{display:inline-block;background:rgba(255,180,40,0.9);color:#1a1a1a;border-radius:6px;padding:5px 14px;font-weight:bold;font-size:15px;letter-spacing:1px;margin:0 4px}',
+      '.hud-mission{position:absolute;top:12px;left:12px;width:340px}',
+      '.hud-mission-title{font-size:20px;font-weight:bold;color:#ffd76a;line-height:1.15}',
+      '.hud-mission-giver{font-size:13px;color:#7ad8ff;margin-top:3px}',
+      '.hud-mission-stage{font-size:15px;font-weight:bold;margin-top:7px}',
+      '.hud-mission-next{font-size:13px;color:#e8e8e8;margin-top:3px}',
+      '.hud-mission-timer{font-size:13px;color:#ffd76a;margin-top:3px}',
+      '.hud-briefing{position:absolute;top:150px;left:12px;width:340px}',
+      '.hud-briefing-title{font-size:18px;font-weight:bold;color:#ffd76a}',
+      '.hud-briefing-giver{font-size:13px;color:#7ad8ff;margin-top:2px}',
+      '.hud-briefing-job{font-size:13px;margin-top:6px;line-height:1.4}',
+      '.hud-briefing-objectives{font-size:13px;margin-top:6px;line-height:1.5}',
+      '.hud-briefing-reward{font-size:15px;font-weight:bold;color:#7dff8a;margin-top:6px}',
+      '.hud-dispatch{position:absolute;top:12px;right:12px;width:250px}',
+      '.hud-dispatch-title{font-size:13px;font-weight:bold;letter-spacing:1px;color:#ff8a7a}',
+      '.hud-dispatch-list{font-size:13px;line-height:1.65;margin-top:5px}',
+      '.hud-dispatch-empty{font-size:13px;color:#c8c8c8;margin-top:5px}',
+      '.hud-crew{position:absolute;top:230px;right:12px;width:200px;display:flex;flex-direction:column;gap:8px}',
+      '.hud-crew-slot{width:100%;display:flex;gap:8px;align-items:center;background:rgba(12,10,22,0.62);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px}',
+      '.hud-crew-avatar{width:44px;height:44px;flex:0 0 44px;border-radius:50%;overflow:hidden;border:2px solid #fff3;margin:0}',
+      '.hud-crew-name{font-size:12px;font-weight:bold;white-space:nowrap}',
+      '.hud-crew-ability{font-size:11px;color:#ffd76a;white-space:nowrap}',
+      '.hud-crew-state{font-size:11px;color:#c8e8c8}',
+      '.hud-dialogue{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);width:560px;display:flex;gap:12px;align-items:flex-start}',
+      '.hud-dialogue-avatar{width:64px;height:64px;flex:0 0 64px;border-radius:50%;overflow:hidden;border:3px solid #ffd76a}',
+      '.hud-dialogue-name{font-size:16px;font-weight:bold;color:#ffd76a}',
+      '.hud-dialogue-text{flex:1}',
+      '.hud-dialogue-line{font-size:16px;line-height:1.45;margin-top:3px}',
+      '.hud-bl{position:absolute;left:12px;bottom:12px;width:330px}',
+      '.hud-rank{font-size:30px;font-weight:bold;color:#ffd76a;line-height:1.05;text-shadow:0 2px 6px rgba(0,0,0,0.7)}',
+      '.hud-rpbar{height:12px;background:rgba(255,255,255,0.18);border-radius:6px;margin-top:6px;overflow:hidden}',
+      '.hud-rpfill{height:100%;background:linear-gradient(90deg,#ff8a2a,#ffd76a);border-radius:6px}',
+      '.hud-rptext{font-size:17px;font-weight:bold;margin-top:5px}',
+      '.hud-ladder{font-size:13px;color:#e8e8e8;margin-top:6px;line-height:1.5}',
+      '.hud-cash{font-size:22px;font-weight:bold;color:#7dff8a;margin-top:8px}',
+      '.hud-district{font-size:15px;font-weight:bold;margin-top:4px}',
+      '.hud-clock{font-size:15px;color:#ffd76a;margin-top:2px}',
+      '.hud-br{position:absolute;right:12px;bottom:12px;text-align:right}',
+      '.hud-minimap{width:200px;height:200px;border-radius:50%;border:3px solid rgba(255,215,106,0.6);background:#12202e;display:block;margin-left:auto}',
+      '.hud-radio{font-size:13px;color:#e8e8e8;margin-top:8px;background:rgba(12,10,22,0.62);border-radius:8px;padding:6px 10px;display:inline-block}',
+      '.hud-carname{font-size:16px;font-weight:bold;margin-top:8px}',
+      '.hud-nitro{font-size:13px;margin-top:4px}',
+      '.hud-nitro-label{font-size:13px;font-weight:bold;color:#7ad8ff}',
+      '.hud-bc{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);text-align:center}',
+      '.hud-weapons{display:flex;gap:8px;justify-content:center}',
+      '.hud-weapon{width:104px;background:rgba(12,10,22,0.7);border:2px solid rgba(255,255,255,0.25);border-radius:10px;padding:8px 6px;font-size:14px}',
+      '.hud-weapon.sel{border-color:#ffd76a;background:rgba(80,60,10,0.8)}',
+      '.hud-weapon.locked{opacity:0.55}',
+      '.hud-weapon-name{font-weight:bold;font-size:14px}',
+      '.hud-weapon-ammo{font-size:18px;font-weight:bold;color:#ffd76a;margin-top:3px}',
+      '.hud-weapon-lock{font-size:11px;color:#ff8a7a;margin-top:3px}',
+      '.hud-hint{font-size:14px;color:#ffe9a8;margin-top:10px;text-shadow:0 1px 4px rgba(0,0,0,0.8)}',
+      '.hud-wheel{position:absolute;inset:auto;left:50%;top:32%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:rgba(12,10,22,0.88);border:2px solid #ffd76a;border-radius:14px;padding:16px 18px}',
+      '.hud-wheel-row{display:flex;gap:10px}',
+      '.hud-wheel-slot{width:110px;text-align:center}',
+      '.hud-wheel-slot.sel .hud-weapon{border-color:#ffd76a}',
+      '.hud-shop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:480px;display:none;background:rgba(14,12,26,0.95);border:2px solid #7dff8a;border-radius:14px;padding:18px;pointer-events:auto}',
+      '.hud-shop-title{font-size:20px;font-weight:bold;color:#7dff8a}',
+      '.hud-shop-cash{font-size:16px;color:#ffd76a;margin-top:4px}',
+      '.hud-shop-list{margin-top:10px}',
+      '.hud-shop-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,0.15);font-size:15px}',
+      '.hud-shop-row button{pointer-events:auto;background:#7dff8a;border:none;border-radius:6px;padding:7px 14px;font-weight:bold;cursor:pointer;font-size:14px}',
+      '.hud-shop-close{pointer-events:auto;background:#444;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:14px;margin-top:12px}',
+      '.hud-shop-msg{font-size:14px;color:#ffd76a;margin-top:8px;min-height:18px}',
+      '.hud-toast{position:absolute;top:76px;left:50%;transform:translateX(-50%);background:rgba(12,10,22,0.85);border:1px solid #ffd76a;border-radius:8px;padding:8px 16px;font-size:16px;font-weight:bold;display:none}',
+      '.hud-wanted{font-size:22px;color:#ff5a5a;letter-spacing:2px;margin-top:4px}',
+      '.hud-speed{font-size:15px;margin-top:4px}'
+    ].join('\n');
+    document.head.appendChild(style);
 
-    // Top-left: stars, cash, rank, RP, ladder, district, standing.
-    const tl = this.el('div', 'hud-tl', root);
-    this.starsEl = this.el('div', 'hud-stars', tl);
-    this.cashEl = this.el('div', 'hud-cash', tl);
-    this.rankEl = this.el('div', 'hud-rank', tl);
-    this.rankEl.style.fontSize = '30px';
-    this.rankEl.style.fontWeight = '800';
-    const rpbar = this.el('div', 'hud-rpbar', tl);
-    this.rpFillEl = this.el('div', 'hud-rpfill', rpbar);
-    this.rpTextEl = this.el('div', 'hud-rptext', tl);
-    this.rpTextEl.style.fontSize = '18px';
-    this.rpTextEl.style.fontWeight = '800';
-    this.ladderEl = this.el('div', 'hud-ladder', tl);
-    this.ladderEl.style.fontSize = '15px';
-    this.ladderEl.style.background = 'rgba(10,10,18,0.8)';
-    this.ladderEl.style.padding = '4px 8px';
-    this.ladderEl.style.borderRadius = '6px';
-    this.ladderEl.style.marginTop = '4px';
-    this.ladderEl.style.display = 'inline-block';
-    this.districtEl = this.el('div', 'hud-district', tl);
-    const standBar = this.el('div', 'hud-rpbar', tl);
-    this.standFillEl = this.el('div', 'hud-rpfill stand', standBar);
-    this.standTextEl = this.el('div', 'hud-rptext', tl);
+    const root = this.el('div', 'hud-root', document.body);
+    this.root = root;
 
-    // Top-center: mission panel, IN SIGHT, air unit.
-    const tc = this.el('div', 'hud-tc', root);
-    this.missionEl = this.el('div', 'hud-mission', tc);
-    this.missionTitleEl = this.el('div', 'hud-mission-title', this.missionEl);
-    this.missionGiverEl = this.el('div', 'hud-mission-giver', this.missionEl);
-    this.missionStageEl = this.el('div', 'hud-mission-stage', this.missionEl);
-    this.missionNextEl = this.el('div', 'hud-mission-next', this.missionEl);
-    this.missionNextEl.style.fontSize = '15px';
-    this.missionNextEl.style.color = '#ffd76a';
-    this.missionNextEl.style.marginTop = '3px';
-    const mBar = this.el('div', 'hud-rpbar mission', this.missionEl);
-    this.missionFillEl = this.el('div', 'hud-rpfill', mBar);
-    this.missionTimerEl = this.el('div', 'hud-mission-timer', this.missionEl);
-    this.insightEl = this.el('div', 'hud-insight', tc);
+    // Air banner (top centre).
+    this.airEl = this.el('div', 'hud-air', root);
+    this.airBanner = this.el('span', 'hud-air-banner', this.airEl);
+    this.airBanner.textContent = 'AIR UNIT DEPLOYED';
+    this.insightEl = this.el('span', 'hud-insight', this.airEl);
     this.insightEl.textContent = 'IN SIGHT';
-    this.insightEl.style.display = 'none';
-    this.airEl = this.el('div', 'hud-air', tc);
-    this.airEl.textContent = '▲ AIR UNIT DEPLOYED';
-    this.airEl.style.display = 'none';
-    this.airEl.style.background = '#a31212';
-    this.airEl.style.color = '#fff';
-    this.airEl.style.fontSize = '17px';
-    this.airEl.style.letterSpacing = '2px';
-    this.airEl.style.padding = '5px 18px';
-    this.airEl.style.borderRadius = '8px';
-    this.airEl.style.border = '2px solid rgba(255,255,255,0.7)';
-    this.airEl.style.marginTop = '8px';
-    this.airEl.style.textAlign = 'center';
 
-    // Top-right: minimap, clock, dispatch.
-    const tr = this.el('div', 'hud-tr', root);
-    this.minimapEl = this.el('canvas', 'hud-minimap', tr);
+    // Mission panel (top left).
+    this.missionEl = this.el('div', 'hud-mission hud-panel', root);
+    this.missionTitle = this.el('div', 'hud-mission-title', this.missionEl);
+    this.missionGiver = this.el('div', 'hud-mission-giver', this.missionEl);
+    this.missionStage = this.el('div', 'hud-mission-stage', this.missionEl);
+    this.missionNext = this.el('div', 'hud-mission-next', this.missionEl);
+    this.missionTimer = this.el('div', 'hud-mission-timer', this.missionEl);
+
+    // Briefing panel (left, below mission).
+    this.briefingEl = this.el('div', 'hud-briefing hud-panel', root);
+    this.briefingTitle = this.el('div', 'hud-briefing-title', this.briefingEl);
+    this.briefingGiver = this.el('div', 'hud-briefing-giver', this.briefingEl);
+    this.briefingJob = this.el('div', 'hud-briefing-job', this.briefingEl);
+    this.briefingObjectives = this.el('div', 'hud-briefing-objectives', this.briefingEl);
+    this.briefingReward = this.el('div', 'hud-briefing-reward', this.briefingEl);
+
+    // Dispatch (right side).
+    this.dispatchEl = this.el('div', 'hud-dispatch hud-panel', root);
+    this.el('div', 'hud-dispatch-title', this.dispatchEl).textContent = 'DISPATCH';
+    this.dispatchList = this.el('div', 'hud-dispatch-list', this.dispatchEl);
+    this.dispatchEmpty = this.el('div', 'hud-dispatch-empty', this.dispatchEl);
+
+    // Crew cards (right side, above dispatch).
+    this.crewEl = this.el('div', 'hud-crew', root);
+
+    // Dialogue (bottom centre, above weapons).
+    this.dialogueEl = this.el('div', 'hud-dialogue hud-panel', root);
+    this.dialogueAvatar = this.el('div', 'hud-dialogue-avatar', this.dialogueEl);
+    this.dialogueBody = this.el('div', 'hud-dialogue-text', this.dialogueEl);
+    this.dialogueName = this.el('div', 'hud-dialogue-name', this.dialogueBody);
+    this.dialogueLine = this.el('div', 'hud-dialogue-line', this.dialogueBody);
+    this.dialogueText = this.dialogueLine;
+
+    // Bottom left: rank, RP, ladder, cash, district, clock, wanted.
+    this.blEl = this.el('div', 'hud-bl', root);
+    this.rankEl = this.el('div', 'hud-rank', this.blEl);
+    this.rpbarEl = this.el('div', 'hud-rpbar', this.blEl);
+    this.rpfillEl = this.el('div', 'hud-rpfill', this.rpbarEl);
+    this.rptextEl = this.el('div', 'hud-rptext', this.blEl);
+    this.ladderEl = this.el('div', 'hud-ladder', this.blEl);
+    this.cashEl = this.el('div', 'hud-cash', this.blEl);
+    this.districtEl = this.el('div', 'hud-district', this.blEl);
+    this.standingEl = this.el('div', 'hud-district', this.blEl);
+    this.clockEl = this.el('div', 'hud-clock', this.blEl);
+    this.wantedEl = this.el('div', 'hud-wanted', this.blEl);
+
+    // Bottom right: minimap, radio, car, nitro, speed.
+    this.brEl = this.el('div', 'hud-br', root);
+    this.minimapEl = this.el('canvas', 'hud-minimap', this.brEl);
     this.minimapEl.width = 200;
     this.minimapEl.height = 200;
-    this.clockEl = this.el('div', 'hud-clock', tr);
-    this.dispatchEl = this.el('div', 'hud-dispatch', tr);
-    this.el('div', 'hud-dispatch-title', this.dispatchEl).textContent = 'DISPATCH';
-    this.dispatchListEl = this.el('div', 'hud-dispatch-list', this.dispatchEl);
-    this.dispatchEmptyEl = this.el('div', 'hud-dispatch-empty', this.dispatchEl);
-    this.dispatchEmptyEl.textContent = 'No active units — streets are quiet';
+    this.radioEl = this.el('div', 'hud-radio', this.brEl);
+    this.carnameEl = this.el('div', 'hud-carname', this.brEl);
+    this.nitroEl = this.el('div', 'hud-nitro', this.brEl);
+    this.nitroLabel = this.el('span', 'hud-nitro-label', this.nitroEl);
+    this.nitroLabel.textContent = 'NITRO ';
+    this.nitroBar = this.el('span', '', this.nitroEl);
+    this.speedEl = this.el('div', 'hud-speed', this.brEl);
 
-    // Bottom-left: crew + radio.
-    const bl = this.el('div', 'hud-bl', root);
-    const crewEl = this.el('div', 'hud-crew', bl);
-    this.crewSlots = [];
-    for (let i = 0; i < 3; i++) {
-      const slot = this.el('div', 'hud-crew-slot', crewEl);
-      const avatar = this.el('div', 'hud-crew-avatar', slot);
-      avatar.style.overflow = 'hidden';
-      avatar.style.padding = '0';
-      const name = this.el('div', 'hud-crew-name', slot);
-      const ability = this.el('div', 'hud-crew-ability', slot);
-      const state = this.el('div', 'hud-crew-state', slot);
-      this.crewSlots.push({ slot, avatar, name, ability, state });
-    }
-    this.radioEl = this.el('div', 'hud-radio', bl);
+    // Bottom centre: weapon slots + controls hint.
+    this.bcEl = this.el('div', 'hud-bc', root);
+    this.weaponsEl = this.el('div', 'hud-weapons', this.bcEl);
+    this.hintEl = this.el('div', 'hud-hint', this.bcEl);
+    this.hintEl.textContent = 'M — start job · Shift — Nitro · F — weapon · Tab — wheel';
 
-    // Bottom-center: dialogue + hint.
-    const bc = this.el('div', 'hud-bc', root);
-    this.dialogueEl = this.el('div', 'hud-dialogue', bc);
-    this.dialogueEl.style.display = 'none';
-    this.dialogueAvatarEl = this.el('div', 'hud-dialogue-avatar', this.dialogueEl);
-    this.dialogueAvatarEl.style.width = '44px';
-    this.dialogueAvatarEl.style.height = '44px';
-    this.dialogueAvatarEl.style.borderRadius = '50%';
-    this.dialogueAvatarEl.style.border = '2px solid #fff';
-    this.dialogueAvatarEl.style.overflow = 'hidden';
-    this.dialogueAvatarEl.style.cssFloat = 'left';
-    this.dialogueAvatarEl.style.marginRight = '12px';
-    const dText = this.el('div', 'hud-dialogue-text', this.dialogueEl);
-    this.dialogueNameEl = this.el('div', 'hud-dialogue-name', dText);
-    this.dialogueLineEl = this.el('div', 'hud-dialogue-line', dText);
-    this.hintEl = this.el('div', 'hud-hint', bc);
-
-    // Bottom-right: speedo, nitro, weapons.
-    const br = this.el('div', 'hud-br', root);
-    const speedo = this.el('div', 'hud-speedo', br);
-    this.speedNumEl = this.el('span', 'hud-speed-num', speedo);
-    this.el('span', 'hud-speed-unit', speedo).textContent = 'km/h';
-    this.carNameEl = this.el('div', 'hud-carname', speedo);
-    const condBar = this.el('div', 'hud-rpbar cond', speedo);
-    this.condFillEl = this.el('div', 'hud-rpfill cond', condBar);
-    this.nitroEl = this.el('div', 'hud-nitro', br);
-    this.nitroLabelEl = this.el('div', 'hud-nitro-label', this.nitroEl);
-    const nBar = this.el('div', 'hud-rpbar nitro', this.nitroEl);
-    this.nitroFillEl = this.el('div', 'hud-rpfill nitro', nBar);
-    this.weaponsEl = this.el('div', 'hud-weapons', br);
-    this.weaponSlots = [];
-    for (let i = 0; i < 6; i++) {
-      const slot = this.el('div', 'hud-weapon', this.weaponsEl);
-      slot.style.width = '120px';
-      const name = this.el('div', 'hud-weapon-name', slot);
-      name.style.fontSize = '16px';
-      const ammo = this.el('div', 'hud-weapon-ammo', slot);
-      ammo.style.fontSize = '15px';
-      this.weaponSlots.push({ slot, name, ammo });
-    }
-
-    // Weapon wheel (center overlay).
+    // Weapon wheel (centre modal).
     this.wheelEl = this.el('div', 'hud-wheel', root);
-    this.wheelEl.style.display = 'none';
-    this.el('div', 'hud-wheel-title', this.wheelEl).textContent = 'WEAPONS — hold Tab, pick 1-6';
-    this.wheelSlots = [];
-    for (let i = 0; i < 6; i++) {
-      const slot = this.el('div', 'hud-wheel-slot', this.wheelEl);
-      const name = this.el('div', 'hud-wheel-name', slot);
-      const ammo = this.el('div', 'hud-wheel-ammo', slot);
-      const lock = this.el('div', 'hud-wheel-lock', slot);
-      this.wheelSlots.push({ slot, name, ammo, lock });
-    }
 
-    // Garage shop (center overlay).
+    // Garage shop (centre modal).
     this.shopEl = this.el('div', 'hud-shop', root);
-    this.shopEl.style.display = 'none';
-    this.el('div', 'hud-shop-title', this.shopEl).textContent = 'ALBA GARAGE';
-    this.shopCashEl = this.el('div', 'hud-shop-cash', this.shopEl);
-    this.shopListEl = this.el('div', 'hud-shop-list', this.shopEl);
-    this.shopMsgEl = this.el('div', 'hud-shop-msg', this.shopEl);
-    const closeBtn = this.el('button', 'hud-shop-close', this.shopEl);
-    closeBtn.textContent = 'CLOSE  [G]';
-    closeBtn.addEventListener('click', () => {
-      if (this.onShopClose) this.onShopClose();
-    });
+    this.shopTitle = this.el('div', 'hud-shop-title', this.shopEl);
+    this.shopTitle.textContent = 'ALBA GARAGE';
+    this.shopCash = this.el('div', 'hud-shop-cash', this.shopEl);
+    this.shopList = this.el('div', 'hud-shop-list', this.shopEl);
+    this.shopMsg = this.el('div', 'hud-shop-msg', this.shopEl);
+    this.shopClose = this.el('button', 'hud-shop-close', this.shopEl);
+    this.shopClose.textContent = 'Close (G)';
+    this.shopClose.addEventListener('click', () => this.hideShop());
 
-    // Mission briefing panel.
-    this.briefingEl = this.el('div', 'hud-briefing', root);
-    this.briefingEl.style.display = 'none';
-    this.briefingEl.style.position = 'absolute';
-    this.briefingEl.style.left = '16px';
-    this.briefingEl.style.top = '330px';
-    this.briefingEl.style.width = '330px';
-    this.briefingEl.style.background = 'rgba(10,10,18,0.85)';
-    this.briefingEl.style.border = '2px solid #ffd76a';
-    this.briefingEl.style.borderRadius = '10px';
-    this.briefingEl.style.padding = '12px 16px';
-    this.briefingTitleEl = this.el('div', 'hud-briefing-title', this.briefingEl);
-    this.briefingTitleEl.style.fontSize = '15px';
-    this.briefingTitleEl.style.letterSpacing = '3px';
-    this.briefingTitleEl.style.color = '#ffd76a';
-    this.briefingJobEl = this.el('div', 'hud-briefing-job', this.briefingEl);
-    this.briefingJobEl.style.fontSize = '22px';
-    this.briefingJobEl.style.color = '#fff';
-    this.briefingJobEl.style.marginTop = '4px';
-    this.briefingGiverEl = this.el('div', 'hud-briefing-giver', this.briefingEl);
-    this.briefingGiverEl.style.fontSize = '15px';
-    this.briefingGiverEl.style.color = '#cfe8ff';
-    this.briefingObjectivesEl = this.el('div', 'hud-briefing-objectives', this.briefingEl);
-    this.briefingObjectivesEl.style.fontSize = '16px';
-    this.briefingObjectivesEl.style.marginTop = '8px';
-    this.briefingObjectivesEl.style.lineHeight = '1.6';
-    this.briefingRewardEl = this.el('div', 'hud-briefing-reward', this.briefingEl);
-    this.briefingRewardEl.style.fontSize = '15px';
-    this.briefingRewardEl.style.color = '#7dff8a';
-    this.briefingRewardEl.style.marginTop = '8px';
-
-    // Toast (center).
+    // Toast (top centre, under the air banner).
     this.toastEl = this.el('div', 'hud-toast', root);
-    this.toastEl.style.display = 'none';
+
+    this.hideShop();
+    this.hideWheel();
   }
 
   setText(node, key, text) {
     if (!node) return;
-    if (node._k !== text) {
+    if (this._textCache[key] !== text) {
       node.textContent = text;
-      node._k = text;
+      this._textCache[key] = text;
     }
   }
 
-  update(vm, dt) {
-    void dt;
-    if (!vm) return;
-    // Stars.
-    const stars = '★'.repeat(Math.max(0, vm.wanted || 0)) + '☆'.repeat(Math.max(0, 5 - (vm.wanted || 0)));
-    this.setText(this.starsEl, 'stars', stars);
-    this.starsEl.classList.toggle('hot', (vm.wanted || 0) >= 3);
-    this.setText(this.cashEl, 'cash', '$' + Math.round(vm.cash || 0).toLocaleString('en-US'));
-    this.setText(this.rankEl, 'rank', (vm.rank || 'Wheelman').toUpperCase());
-    if (this.rpFillEl) this.rpFillEl.style.width = Math.round((vm.rankProgress || 0) * 100) + '%';
-    this.setText(this.rpTextEl, 'rp', Math.round(vm.rp || 0) + ' RP · next: ' + (vm.nextRank || '—'));
-    // Rank ladder, current rank highlighted.
-    if (vm.ladder) {
-      const html = vm.ladder.map((r) =>
-        r === vm.rank ? '<b style="color:#ffd76a">' + r + '</b>' : r
-      ).join(' • ');
-      if (this._lastLadder !== html) {
-        this.ladderEl.innerHTML = html;
-        this._lastLadder = html;
+  toast(text, dur) {
+    this.toastEl.textContent = text;
+    this.toastEl.style.display = 'block';
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => { this.toastEl.style.display = 'none'; }, dur || 2500);
+  }
+
+  showWheel(weapons, selected, position) {
+    const list = weapons || [];
+    this.wheelEl.innerHTML = '';
+    const title = this.el('div', 'hud-wheel-title', this.wheelEl);
+    title.textContent = 'WEAPONS — hold Tab, pick 1-6';
+    const row = this.el('div', 'hud-wheel-row', this.wheelEl);
+    list.forEach((w, i) => {
+      const slot = this.el('div', 'hud-wheel-slot' + (i === selected ? ' sel' : ''), row);
+      const boxEl = this.el('div', 'hud-weapon' + (w.locked ? ' locked' : '') + (i === selected ? ' selected' : ''), slot);
+      const name = this.el('div', 'hud-weapon-name', boxEl);
+      name.textContent = (i + 1) + ' · ' + w.name;
+      const ammo = this.el('div', 'hud-weapon-ammo', boxEl);
+      ammo.textContent = w.locked ? '—' : (w.ammo !== undefined && w.ammo !== null ? w.ammo : '∞');
+      if (w.locked) {
+        const lock = this.el('div', 'hud-weapon-lock', boxEl);
+        lock.textContent = w.lockText || 'LOCKED';
+      }
+    });
+    this.wheelEl.style.display = 'flex';
+  }
+
+  hideWheel() {
+    this.wheelEl.style.display = 'none';
+  }
+
+  showShop(items, cash, owned, onBuy) {
+    const list = items || [];
+    this._shopOnBuy = onBuy;
+    this.shopCash.textContent = 'Cash: $' + (cash || 0).toLocaleString('en-US');
+    this.shopList.innerHTML = '';
+    for (const item of list) {
+      const row = this.el('div', 'hud-shop-row', this.shopList);
+      const label = this.el('span', '', row);
+      label.textContent = item.name + ' — $' + (item.price || 0).toLocaleString('en-US') + (item.desc ? ' · ' + item.desc : '');
+      const btn = this.el('button', '', row);
+      const isOwned = owned && (typeof owned.has === 'function' ? owned.has(item.id) : !!owned[item.id]);
+      btn.textContent = isOwned ? 'OWNED' : 'BUY';
+      btn.disabled = !!isOwned;
+      if (!isOwned) {
+        btn.addEventListener('click', () => { if (this._shopOnBuy) this._shopOnBuy(item); });
       }
     }
-    this.setText(this.districtEl, 'district', '▸ ' + (vm.district || ''));
-    if (this.standFillEl) this.standFillEl.style.width = Math.round(vm.standing || 0) + '%';
-    this.setText(this.standTextEl, 'stand', 'Standing ' + Math.round(vm.standing || 0) + ' / 100');
+    this.shopMsg.textContent = '';
+    this.shopEl.style.display = 'block';
+  }
 
-    // Mission panel: job, giver, stage + STAGE x/y, NEXT step, progress.
-    if (vm.mission) {
-      this.missionEl.style.display = 'block';
-      this.setText(this.missionTitleEl, 'mt', vm.mission.title || '');
-      this.setText(this.missionGiverEl, 'mg', vm.mission.giver || '');
-      const stageLine = (vm.mission.stageLabel ? vm.mission.stageLabel + ' · ' : '') + (vm.mission.stage || '');
-      this.setText(this.missionStageEl, 'ms', stageLine);
-      if (vm.mission.next) {
-        this.missionNextEl.style.display = 'block';
-        this.setText(this.missionNextEl, 'mn', 'NEXT › ' + vm.mission.next);
-      } else {
-        this.missionNextEl.style.display = 'none';
+  hideShop() {
+    this.shopEl.style.display = 'none';
+  }
+
+  setShopMessage(msg) {
+    this.shopMsg.textContent = msg || '';
+  }
+
+  update(vm, dt) {
+    if (!vm) return;
+
+    // Cash / clock / wanted.
+    this.setText(this.cashEl, 'cash', '$' + (vm.cash || 0).toLocaleString('en-US'));
+    this.setText(this.clockEl, 'clock', vm.clock || '');
+    const wanted = vm.wanted || 0;
+    this.setText(this.wantedEl, 'wanted', '★'.repeat(wanted) + '☆'.repeat(Math.max(0, 5 - wanted)));
+
+    // Rank: current rank LARGE and bold, RP numbers big.
+    const rankName = (vm.rank || 'Wheelman').toUpperCase();
+    this.setText(this.rankEl, 'rank', rankName);
+    const prog = vm.rankProgress !== undefined && vm.rankProgress !== null ? vm.rankProgress : 0;
+    this.rpfillEl.style.width = Math.round(Math.max(0, Math.min(1, prog)) * 100) + '%';
+    this.setText(this.rptextEl, 'rptext', (vm.rp || 0) + ' RP  ·  NEXT: ' + (vm.nextRank || 'MAX'));
+    const ladder = vm.ladder || [];
+    const ladderSig = ladder.join('|') + '@' + rankName;
+    if (ladderSig !== this._ladderSig) {
+      this._ladderSig = ladderSig;
+      this.ladderEl.innerHTML = '';
+      for (const name of ladder) {
+        const span = document.createElement('span');
+        const up = String(name).toUpperCase();
+        span.textContent = up;
+        span.style.fontWeight = up === rankName ? 'bold' : 'normal';
+        span.style.color = up === rankName ? '#ffd76a' : '#e8e8e8';
+        span.style.marginRight = '8px';
+        this.ladderEl.appendChild(span);
       }
-      if (this.missionFillEl) this.missionFillEl.style.width = Math.round((vm.mission.progress || 0) * 100) + '%';
-      this.setText(this.missionTimerEl, 'mtimer', vm.mission.timer || '');
+    }
+
+    // District: ALWAYS a string name, never an object.
+    let district = vm.district;
+    if (district && typeof district === 'object') district = district.name || 'The Strand';
+    if (!district) district = 'The Strand';
+    this.setText(this.districtEl, 'dist' + district, '▸ ' + district);
+    this.setText(this.standingEl, 'standing', 'Standing ' + (vm.standing || 0) + ' / 100');
+
+    // Car, nitro, speed, radio.
+    const speedKmh = vm.speedKmh !== undefined && vm.speedKmh !== null ? Math.round(vm.speedKmh) : 0;
+    this.setText(this.carnameEl, 'carname', (vm.carName || 'Alba Cruiser') + '  ·  COND ' + (vm.condition !== undefined && vm.condition !== null ? Math.round(vm.condition) : 100) + '%');
+    const nitro = vm.nitro !== undefined && vm.nitro !== null ? Math.round(vm.nitro) : 0;
+    this.setText(this.nitroBar, 'nitro', (vm.nitroOwned ? '' : '(not owned) ') + nitro + '%' + (vm.nitroBoost ? '  BOOST!' : ''));
+    this.setText(this.speedEl, 'speed', speedKmh + ' km/h');
+    const radio = vm.radio || {};
+    this.setText(this.radioEl, 'radio', (radio.station || 'ALBA FM 98.1') + ' — ' + (radio.song || 'Golden Hour Drive'));
+
+    // Air banners.
+    this.airBanner.style.display = vm.airDeployed ? 'inline-block' : 'none';
+    this.insightEl.style.display = vm.spotted ? 'block' : 'none';
+    this.airEl.style.display = (vm.airDeployed || vm.spotted) ? 'block' : 'none';
+
+    // Mission panel.
+    const m = vm.mission;
+    if (m) {
+      this.missionEl.style.display = 'block';
+      const sig = m.title + '|' + m.stageLabel + '|' + m.next;
+      if (sig !== this._missionSig) {
+        this._missionSig = sig;
+        this.setText(this.missionTitle, 'mtitle', m.title || '');
+        this.setText(this.missionGiver, 'mgiver', m.giver || '');
+        this.setText(this.missionStage, 'mstage', (m.stageLabel ? m.stageLabel + '  ' : '') + (m.stage || ''));
+        this.setText(this.missionNext, 'mnext', 'NEXT  ' + (m.next || ''));
+        this.setText(this.missionTimer, 'mtimer', m.timer || '');
+      }
     } else {
       this.missionEl.style.display = 'none';
     }
-    this.insightEl.style.display = vm.spotted ? 'block' : 'none';
-    this.airEl.style.display = vm.airDeployed ? 'block' : 'none';
 
-    // Clock.
-    this.setText(this.clockEl, 'clock', vm.clock || '');
-
-    // Dispatch board.
-    if (vm.hideDispatch) {
-      this.dispatchEl.style.display = 'none';
-    } else {
-      this.dispatchEl.style.display = 'block';
-      const list = vm.dispatch || [];
-      if (!list.length) {
-        this.dispatchListEl.innerHTML = '';
-        this._lastDispatch = '';
-        this.dispatchEmptyEl.style.display = 'block';
-        this.setText(this.dispatchEmptyEl, 'de', vm.dispatchEmptyText || 'No active units — streets are quiet');
-      } else {
-        this.dispatchEmptyEl.style.display = 'none';
-        const key = JSON.stringify(list.map((u) => [u.code, u.status, Math.round(u.dist)]));
-        if (key !== this._lastDispatch) {
-          this._lastDispatch = key;
-          this.dispatchListEl.innerHTML = list.map((u) =>
-            '<div class="hud-unit"><span class="hud-unit-code">' + u.code + '</span>'
-            + '<span class="hud-unit-role">' + u.role + '</span>'
-            + '<span class="hud-unit-badge" style="background:' + u.color + ';">' + u.status + '</span>'
-            + '<span class="hud-unit-dist">' + Math.round(u.dist) + 'm</span></div>'
-          ).join('');
+    // Briefing panel.
+    const b = vm.briefing;
+    if (b) {
+      this.briefingEl.style.display = 'block';
+      const sig = b.title + '|' + (b.objectives || []).join('|') + '|' + b.reward;
+      if (sig !== this._briefingSig) {
+        this._briefingSig = sig;
+        this.setText(this.briefingTitle, 'btitle', b.title || '');
+        this.setText(this.briefingGiver, 'bgiver', b.giver || '');
+        this.setText(this.briefingJob, 'bjob', b.job || '');
+        const obj = b.objectives || [];
+        this.briefingObjectives.innerHTML = '';
+        for (const line of obj) {
+          const div = document.createElement('div');
+          div.textContent = '• ' + line;
+          this.briefingObjectives.appendChild(div);
         }
+        this.setText(this.briefingReward, 'breward', 'REWARD  ' + (b.reward || '') + (b.cash !== undefined && b.cash !== null ? '   ·   CASH ' + b.cash : ''));
       }
+    } else {
+      this.briefingEl.style.display = 'none';
     }
 
-    // Crew slots with drawn faces.
-    const crew = vm.crew || [];
-    for (let i = 0; i < this.crewSlots.length; i++) {
-      const s = this.crewSlots[i];
-      const c = crew[i];
-      if (!c) { s.slot.style.display = 'none'; continue; }
-      s.slot.style.display = 'block';
-      s.slot.style.borderColor = c.color || 'rgba(255,255,255,0.4)';
-      const faceKey = (c.initials || '') + (c.color || '');
-      if (s.avatar._k !== faceKey) {
-        s.avatar.innerHTML = this._faceSVG(c);
-        s.avatar._k = faceKey;
+    // Dialogue: drawn-face portrait, never initials.
+    const d = vm.dialogue;
+    if (d) {
+      this.dialogueEl.style.display = 'flex';
+      const sig = d.name + '|' + d.line;
+      if (sig !== this._dialogueSig) {
+        this._dialogueSig = sig;
+        this.dialogueAvatar.innerHTML = this._faceSVG(d);
+        this.setText(this.dialogueName, 'dname', d.name + (d.role ? '  ·  ' + d.role : ''));
+        this.setText(this.dialogueText, 'dline', d.line || '');
+        this.setText(this.dialogueLine, 'dline2', d.line || '');
       }
-      this.setText(s.name, 'n', c.name || '');
-      this.setText(s.ability, 'a', (c.ability || '') + ' [' + (c.key || '') + ']');
-      const stateTxt = c.ready ? 'READY' : Math.ceil(c.cooldown || 0) + 's';
-      this.setText(s.state, 's', stateTxt);
-      s.state.classList.toggle('ready', !!c.ready);
-    }
-
-    // Radio.
-    if (vm.radio) this.setText(this.radioEl, 'radio', vm.radio.station + ' — ' + vm.radio.song);
-
-    // Dialogue with drawn face.
-    if (vm.dialogue) {
-      this.dialogueEl.style.display = 'block';
-      const d = vm.dialogue;
-      const faceKey = 'dlg' + (d.name || '') + (d.color || '');
-      if (this.dialogueAvatarEl._k !== faceKey) {
-        this.dialogueAvatarEl.innerHTML = this._faceSVG({
-          color: d.color, skin: d.skin, hair: d.hair, mustache: d.mustache,
-        });
-        this.dialogueAvatarEl._k = faceKey;
-      }
-      this.setText(this.dialogueNameEl, 'dn', d.name + ' · ' + d.role);
-      this.dialogueNameEl.style.color = d.color || '#2ad8c8';
-      this.setText(this.dialogueLineEl, 'dl', d.line || '');
     } else {
       this.dialogueEl.style.display = 'none';
     }
 
-    // Controls hint — hidden on the staged cover.
-    if (vm.hideHint || !vm.hint) {
-      this.hintEl.style.display = 'none';
-    } else {
-      this.hintEl.style.display = 'block';
-      this.setText(this.hintEl, 'hint', vm.hint);
-    }
+    // Controls hint: hidden on the cover shot.
+    this.hintEl.style.display = vm.hideHint ? 'none' : 'block';
+    if (!vm.hideHint) this.setText(this.hintEl, 'hint', vm.hint || 'M — start job · Shift — Nitro · F — weapon · Tab — wheel');
 
-    // Speedo / condition / nitro.
-    this.setText(this.speedNumEl, 'spd', String(Math.round(vm.speedKmh || 0)));
-    this.setText(this.carNameEl, 'car', vm.carName || '');
-    if (this.condFillEl) this.condFillEl.style.width = Math.round(vm.condition || 0) + '%';
-    if (vm.nitroOwned) {
-      this.nitroEl.style.display = 'block';
-      this.setText(this.nitroLabelEl, 'nl', 'NITRO ' + Math.round(vm.nitro || 0) + '%');
-      if (this.nitroFillEl) {
-        this.nitroFillEl.style.width = Math.round(vm.nitro || 0) + '%';
-        this.nitroFillEl.classList.toggle('boosting', !!vm.nitroBoost);
+    // Dispatch: hidden while the weapon wheel is open (combat shot).
+    if (vm.hideDispatch) {
+      this.dispatchEl.style.display = 'none';
+    } else {
+      this.dispatchEl.style.display = 'block';
+      const disp = vm.dispatch || [];
+      const sig = disp.map((u) => (u.code || u.label || u.name || u.id || '') + ':' + (u.dist !== undefined ? Math.round(u.dist) : u.distance) + ':' + (u.role || u.status || '')).join('|');
+      if (sig !== this._dispatchSig) {
+        this._dispatchSig = sig;
+        this.dispatchList.innerHTML = '';
+        if (!disp.length) {
+          this.dispatchEmpty.style.display = 'block';
+          this.setText(this.dispatchEmpty, 'dempty', vm.dispatchEmptyText || 'No active units — streets are quiet');
+        } else {
+          this.dispatchEmpty.style.display = 'none';
+          for (const u of disp) {
+            const div = this.el('div', 'hud-unit', this.dispatchList);
+            const code = this.el('span', 'hud-unit-code', div);
+            code.textContent = u.code || u.label || u.name || u.id || 'P-??';
+            if (u.color) code.style.color = u.color;
+            const role = this.el('span', 'hud-unit-role', div);
+            role.textContent = u.role || u.status || '';
+            const dist = this.el('span', 'hud-unit-dist', div);
+            const d = u.dist !== undefined ? u.dist : u.distance;
+            dist.textContent = (d !== undefined && d !== null) ? Math.round(d) + 'm' : '';
+          }
+        }
       }
-    } else {
-      this.nitroEl.style.display = 'none';
     }
 
-    // Weapon slots: large boxes with big names + ammo numbers.
+    // Crew cards.
+    const crew = vm.crew || [];
+    const crewSig = crew.map((c) => c.name + ':' + (c.ready ? 'R' : Math.ceil(c.cooldown || 0))).join('|');
+    if (crewSig !== this._crewSig) {
+      this._crewSig = crewSig;
+      this.crewEl.innerHTML = '';
+      for (const c of crew) {
+        const slot = this.el('div', 'hud-crew-slot', this.crewEl);
+        const av = this.el('div', 'hud-crew-avatar', slot);
+        av.innerHTML = this._faceSVG(c);
+        const info = this.el('div', '', slot);
+        const nm = this.el('div', 'hud-crew-name', info);
+        nm.textContent = c.name + '  [' + (c.key || '') + ']';
+        const ab = this.el('div', 'hud-crew-ability', info);
+        ab.textContent = c.ability || '';
+        const st = this.el('div', 'hud-crew-state', info);
+        st.textContent = c.ready ? 'READY' : Math.ceil(c.cooldown || 0) + 's';
+      }
+    }
+
+    // Weapon slots: larger boxes with names + big ammo numbers.
     const weapons = vm.weapons || [];
-    for (let i = 0; i < this.weaponSlots.length; i++) {
-      const s = this.weaponSlots[i];
-      const w = weapons[i];
-      if (!w) { s.slot.style.display = 'none'; continue; }
-      s.slot.style.display = 'block';
-      s.slot.classList.toggle('selected', !!w.selected);
-      s.slot.classList.toggle('locked', !!w.locked);
-      this.setText(s.name, 'wn', (i + 1) + ' ' + w.name);
-      this.setText(s.ammo, 'wa', w.locked ? (w.lockText || 'LOCKED') : (w.ammo + ' ammo'));
-    }
-
-    // Briefing panel.
-    if (vm.briefing) {
-      this.briefingEl.style.display = 'block';
-      const b = vm.briefing;
-      this.setText(this.briefingTitleEl, 'bt', 'MISSION BRIEFING');
-      this.setText(this.briefingJobEl, 'bj', b.title || '');
-      this.setText(this.briefingGiverEl, 'bg', (b.giver || '') + ' · ' + (b.role || ''));
-      const objKey = JSON.stringify(b.objectives || []);
-      if (this.briefingObjectivesEl._k !== objKey) {
-        this.briefingObjectivesEl.innerHTML = (b.objectives || []).map((o, i) =>
-          '<div>' + (i === 0 ? '▸ ' : '○ ') + o + '</div>').join('');
-        this.briefingObjectivesEl._k = objKey;
-      }
-      this.setText(this.briefingRewardEl, 'br', 'Reward ' + (b.reward || '') + ' · Cash on hand $' + Math.round(vm.cash || 0).toLocaleString('en-US'));
-    } else {
-      this.briefingEl.style.display = 'none';
+    const wSig = weapons.map((w) => w.name + ':' + w.ammo + ':' + (w.locked ? 'L' : 'U') + ':' + (w.selected ? 'S' : '')).join('|');
+    if (wSig !== this._weaponSig) {
+      this._weaponSig = wSig;
+      this.weaponsEl.innerHTML = '';
+      weapons.forEach((w, i) => {
+        const boxEl = this.el('div', 'hud-weapon' + (w.locked ? ' locked' : '') + (w.selected ? ' selected' : ''), this.weaponsEl);
+        const nm = this.el('div', 'hud-weapon-name', boxEl);
+        nm.textContent = (i + 1) + ' · ' + w.name;
+        const am = this.el('div', 'hud-weapon-ammo', boxEl);
+        am.textContent = w.locked ? '—' : (w.ammo !== undefined && w.ammo !== null ? w.ammo : '∞');
+        if (w.locked) {
+          const lk = this.el('div', 'hud-weapon-lock', boxEl);
+          lk.textContent = w.lockText || 'LOCKED';
+        }
+      });
     }
 
     // Minimap.
@@ -412,182 +473,95 @@ export class Hud {
     const cv = this.minimapEl;
     if (!cv) return;
     const ctx = cv.getContext('2d');
-    const W = 200;
-    const H = 200;
-    const scale = 200 / 380; // ~380m across the map
-    const px = mm.x || 0;
-    const pz = mm.z || 0;
-    const toX = (x) => 100 + (x - px) * scale;
-    const toY = (z) => 100 + (z - pz) * scale;
-    ctx.save();
+    const W = cv.width;
+    const H = cv.height;
     ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#12202e';
     ctx.beginPath();
-    ctx.arc(100, 100, 98, 0, Math.PI * 2);
+    ctx.arc(W / 2, H / 2, W / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, W / 2, 0, Math.PI * 2);
     ctx.clip();
-    ctx.fillStyle = '#123a4a';
-    ctx.fillRect(0, 0, W, H);
-    // Water (south of the beach).
-    if (pz + 190 > 300) {
-      ctx.fillStyle = '#1a6a72';
-      ctx.fillRect(0, toY(300), W, H);
-    }
-    // Streets as lines.
-    const roads = mm.roads || [-240, -160, -80, 0, 80, 160, 240];
-    const roadsZ = mm.roadsZ || [-240, -160, -80, 0, 80, 160, 200];
-    ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+
+    const px = (x) => (x + 300) * (W / 600);
+    const py = (z) => (z + 300) * (H / 860);
+    const roads = mm.roads || [];
+    const roadsZ = mm.roadsZ || [];
+    ctx.strokeStyle = '#3a5a6a';
     ctx.lineWidth = 3;
-    for (const x of roads) {
+    for (const rz of roadsZ) {
       ctx.beginPath();
-      ctx.moveTo(toX(x), toY(pz - 190));
-      ctx.lineTo(toX(x), toY(pz + 190));
+      ctx.moveTo(0, py(rz));
+      ctx.lineTo(W, py(rz));
       ctx.stroke();
     }
-    for (const z of roadsZ) {
+    for (const rx of roads) {
       ctx.beginPath();
-      ctx.moveTo(toX(px - 190), toY(z));
-      ctx.lineTo(toX(px + 190), toY(z));
+      ctx.moveTo(px(rx), 0);
+      ctx.lineTo(px(rx), H);
       ctx.stroke();
     }
-    // Mission route: gold dashed line + destination marker.
-    if (mm.route && mm.route.length > 1) {
+    // Water band at the bottom (south).
+    ctx.fillStyle = 'rgba(42,138,154,0.55)';
+    ctx.fillRect(0, py(300), W, H - py(300));
+
+    // Mission route: gold line + destination marker.
+    const route = mm.route || [];
+    if (route.length >= 2) {
       ctx.strokeStyle = '#ffd76a';
       ctx.lineWidth = 3;
-      ctx.setLineDash([7, 5]);
       ctx.beginPath();
-      ctx.moveTo(toX(mm.route[0][0]), toY(mm.route[0][1]));
-      for (let i = 1; i < mm.route.length; i++) ctx.lineTo(toX(mm.route[i][0]), toY(mm.route[i][1]));
+      ctx.moveTo(px(route[0][0]), py(route[0][1]));
+      for (let i = 1; i < route.length; i++) ctx.lineTo(px(route[i][0]), py(route[i][1]));
       ctx.stroke();
-      ctx.setLineDash([]);
-      const last = mm.route[mm.route.length - 1];
-      const dx = toX(last[0]);
-      const dy = toY(last[1]);
+      const last = route[route.length - 1];
       ctx.fillStyle = '#ffd76a';
       ctx.beginPath();
-      ctx.moveTo(dx, dy - 8);
-      ctx.lineTo(dx + 7, dy);
-      ctx.lineTo(dx, dy + 8);
-      ctx.lineTo(dx - 7, dy);
-      ctx.closePath();
+      ctx.arc(px(last[0]), py(last[1]), 6, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#201404';
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    // Extra markers.
+    for (const mk of (mm.markers || [])) {
+      ctx.fillStyle = mk.color || '#ffd76a';
+      ctx.beginPath();
+      ctx.arc(px(mk.x), py(mk.z), 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Police dots.
+    for (const p of (mm.police || [])) {
+      ctx.fillStyle = '#ff3a3a';
+      ctx.beginPath();
+      ctx.arc(px(p.x), py(p.z), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#7ad8ff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
-    // Extra markers (gold dots).
-    for (const m of (mm.markers || [])) {
-      ctx.fillStyle = m.color || '#ffd76a';
-      ctx.beginPath();
-      ctx.arc(toX(m.x), toY(m.z), 4.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-    // Police units as red/blue dots.
-    for (const u of (mm.police || [])) {
-      ctx.fillStyle = u.color || '#ff3a3a';
-      ctx.beginPath();
-      ctx.arc(toX(u.x), toY(u.z), 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
     // Player arrow.
-    const h = mm.heading || 0;
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#201404';
-    ctx.lineWidth = 1.5;
+    const hx = px(mm.x || 0);
+    const hy = py(mm.z || 0);
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(Math.PI - (mm.heading || 0));
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(100 + Math.sin(h) * 9, 100 + Math.cos(h) * 9);
-    ctx.lineTo(100 + Math.sin(h + 2.6) * 7, 100 + Math.cos(h + 2.6) * 7);
-    ctx.lineTo(100 + Math.sin(h - 2.6) * 7, 100 + Math.cos(h - 2.6) * 7);
+    ctx.moveTo(0, -8);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(-6, 6);
     ctx.closePath();
     ctx.fill();
-    ctx.stroke();
     ctx.restore();
-    // Ring.
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,215,106,0.6)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(100, 100, 98, 0, Math.PI * 2);
+    ctx.arc(W / 2, H / 2, W / 2 - 1.5, 0, Math.PI * 2);
     ctx.stroke();
-  }
-
-  showWheel(weapons, selected, position) {
-    // position (optional) shifts the wheel so staged shots keep the 3D
-    // action clear of the panel; default is centered (CSS).
-    if (position && position.left) this.wheelEl.style.left = position.left;
-    if (position && position.top) this.wheelEl.style.top = position.top;
-    this._wheelPinned = true;
-    this.wheelEl.style.display = 'flex';
-    for (let i = 0; i < this.wheelSlots.length; i++) {
-      const s = this.wheelSlots[i];
-      const w = weapons[i];
-      if (!w) { s.slot.style.display = 'none'; continue; }
-      s.slot.style.display = 'flex';
-      s.slot.classList.toggle('selected', i === selected);
-      s.slot.classList.toggle('locked', !!w.locked);
-      this.setText(s.name, 'wn', (i + 1) + ' ' + w.name);
-      this.setText(s.ammo, 'wa', w.locked ? (w.lockText || 'LOCKED') : (w.ammo + ' ammo'));
-      s.lock.innerHTML = w.locked
-        ? '<svg width="18" height="18" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="#aaa"/><path d="M8 10 V7 a4 4 0 0 1 8 0 v3" stroke="#aaa" stroke-width="2" fill="none"/></svg>'
-        : '';
-    }
-  }
-
-  hideWheel() {
-    this._wheelPinned = false;
-    this.wheelEl.style.display = 'none';
-  }
-
-  showShop(items, cash, owned, onBuy) {
-    this._shopBuy = onBuy;
-    this.shopEl.style.display = 'block';
-    this.setText(this.shopCashEl, 'sc', 'Cash: $' + Math.round(cash).toLocaleString('en-US'));
-    this.shopListEl.innerHTML = '';
-    for (const item of items) {
-      const row = document.createElement('div');
-      row.className = 'hud-shop-row';
-      const name = document.createElement('div');
-      name.className = 'hud-shop-name';
-      name.textContent = item.name || item.id;
-      row.appendChild(name);
-      const desc = document.createElement('div');
-      desc.className = 'hud-shop-desc';
-      desc.textContent = item.desc || '';
-      row.appendChild(desc);
-      const btn = document.createElement('button');
-      btn.className = 'hud-shop-buy';
-      const isOwned = owned && owned[item.id];
-      btn.disabled = !!isOwned;
-      btn.textContent = isOwned ? 'OWNED' : '$' + (item.price || 0).toLocaleString('en-US');
-      btn.addEventListener('click', () => {
-        if (this._shopBuy) this._shopBuy(item.id);
-      });
-      row.appendChild(btn);
-      this.shopListEl.appendChild(row);
-    }
-  }
-
-  hideShop() {
-    this.shopEl.style.display = 'none';
-  }
-
-  setShopMessage(msg) {
-    this.setText(this.shopMsgEl, 'sm', msg || '');
-  }
-
-  toast(text, dur) {
-    if (!text) {
-      this.toastEl.style.display = 'none';
-      return;
-    }
-    this.setText(this.toastEl, 'toast', text);
-    this.toastEl.style.display = 'block';
-    if (this._toastTimer) clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => {
-      this.toastEl.style.display = 'none';
-    }, dur || 3000);
   }
 }
