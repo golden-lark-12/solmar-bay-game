@@ -86,7 +86,7 @@ async function main() {
   const chrome = spawn(CHROME, [
     '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
     '--use-angle=swiftshader-webgl', '--enable-unsafe-swiftshader',
-    '--window-size=1280,900', '--hide-scrollbars',
+    '--window-size=1600,900', '--hide-scrollbars',
     `--remote-debugging-port=${DEBUG_PORT}`, 'about:blank'
   ], { stdio: 'ignore' });
   try {
@@ -104,7 +104,7 @@ async function main() {
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
     await cdp.send('Page.enable');
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
 
     for (const shot of shots) {
       const url = `http://127.0.0.1:${PORT}/index.html${shot.query}`;
@@ -120,7 +120,7 @@ async function main() {
       await sleep(5000);
       const state = await cdp.send('Runtime.evaluate', { expression: 'JSON.stringify(window.__gameState())', returnByValue: true });
       console.log(shot.name + ' state: ' + (state.result ? state.result.value : 'n/a'));
-      const shotRes = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 80 });
+      const shotRes = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 });
       const buf = Buffer.from(shotRes.data, 'base64');
       fs.writeFileSync(path.join(SHOTS_DIR, shot.name), buf);
       console.log(shot.name + ': ' + buf.length + ' bytes');

@@ -99,7 +99,8 @@ Earn RP from jobs and races to climb the ladder:
 
 ```
 game/
-  index.html        entry point, HUD + screen styles
+  index.html        entry point
+  style.css         HUD + screen styles
   src/
     main.js         boot, game loop, camera, screenshot staging
     city.js         the city: roads, buildings, beach, water, sun, signs
@@ -126,10 +127,10 @@ game/
 
 ## Screenshots
 
-- `screenshots/1-chase.jpg` — the M8 getaway chase on the Strand
-- `screenshots/2-briefing.jpg` — the briefing for the final job
-- `screenshots/3-combat.jpg` — on-foot combat, weapon wheel open
-- `screenshots/4-vista.jpg` — the city, the pier and the water at sunset
+- `screenshots/1-cover.jpg` — the cover: Ria's car nose-right in a 5-star chase, ALBA sign and low sun
+- `screenshots/2-briefing.jpg` — the briefing for the final job, one M8 panel
+- `screenshots/3-combat.jpg` — on-foot firefight beside a burning cruiser, weapon wheel open
+- `screenshots/4-vista.jpg` — low from the water: pier, lighthouse, ferris wheel, city at sunset
 
 Take fresh ones with `node take-shots.mjs`. Run the full playtest with
 `node playtest.mjs`.

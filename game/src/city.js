@@ -364,6 +364,78 @@ export function buildCity(THREE, scene) {
   boat(10, 315, 2.7, 0xf2f2f2);
   boat(-70, 430, 2.4, 0xffd76a);
 
+  // --- ALBA sign: standalone double-sided panel on two posts, beside the
+  // Strand road at the north edge, gold on dark like the garage sign.
+  // Panel 11 x 2.6, top at ~8 units; faces the road (south).
+  {
+    const signTex = signTexture('ALBA', '#1a2420', '#ffd76a', '#ffd76a');
+    const signPanel = new THREE.Mesh(
+      new THREE.PlaneGeometry(11, 2.6),
+      new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide })
+    );
+    signPanel.position.set(-72, 6.7, 194);
+    group.add(signPanel);
+    addBox(0.35, 5.4, 0.35, 0x3a3a3a, -76.5, 2.7, 194);
+    addBox(0.35, 5.4, 0.35, 0x3a3a3a, -67.5, 2.7, 194);
+    addCollider(-72, 194, 5.5);
+  }
+
+  // --- Pier + lighthouse: timber deck from the beach into the water, with
+  // a striped lighthouse at the pier end, reading with the ferris wheel.
+  {
+    addBox(5, 0.6, 78, 0x8a6a4a, 30, 1.0, 316, { roughness: 0.9 });
+    for (let z = 284; z <= 352; z += 9) {
+      addBox(0.5, 2.4, 0.5, 0x6a4a2a, 28.2, 0.4, z);
+      addBox(0.5, 2.4, 0.5, 0x6a4a2a, 31.8, 0.4, z);
+    }
+    addBox(5.4, 0.3, 1.2, 0x6a4a2a, 30, 1.45, 278);
+    addBox(5.4, 0.3, 1.2, 0x6a4a2a, 30, 1.45, 354);
+    // Lighthouse: white tower with a red band, gallery, and a gold lamp.
+    const towerBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.1, 2.5, 3, 12),
+      std(0xf2f2f2, 0.7, 0.05)
+    );
+    towerBase.position.set(30, 2.8, 352);
+    group.add(towerBase);
+    const towerMid = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 2.0, 5, 12),
+      std(0xd83a3a, 0.7, 0.05)
+    );
+    towerMid.position.set(30, 6.8, 352);
+    group.add(towerMid);
+    const towerTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.25, 1.55, 5, 12),
+      std(0xf2f2f2, 0.7, 0.05)
+    );
+    towerTop.position.set(30, 11.8, 352);
+    group.add(towerTop);
+    const gallery = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.9, 1.9, 1.1, 12),
+      std(0x2a2a2a, 0.6, 0.3)
+    );
+    gallery.position.set(30, 14.8, 352);
+    group.add(gallery);
+    const lamp = new THREE.Mesh(
+      new THREE.SphereGeometry(0.85, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffd76a })
+    );
+    lamp.position.set(30, 15.9, 352);
+    group.add(lamp);
+    const lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTexture(THREE), transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+    lampGlow.scale.set(14, 14, 1);
+    lampGlow.position.set(30, 15.9, 352);
+    group.add(lampGlow);
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(1.7, 1.6, 12),
+      std(0xd83a3a, 0.7, 0.05)
+    );
+    roof.position.set(30, 17.4, 352);
+    group.add(roof);
+    addCollider(30, 352, 3);
+  }
+
   // --- Sun: disc + big glow sprite ---------------------------------------------
   const sunBall = new THREE.Mesh(
     new THREE.SphereGeometry(12, 20, 16),

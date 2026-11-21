@@ -59,14 +59,15 @@ export function makeCarMesh(THREE, color, opts) {
   body.position.set(0, 0.55, 0);
   g.add(body);
 
-  // Dark glass cabin, set slightly back.
-  const cabin = box(THREE, 1.7, 0.55, 2.0, 0x182838, { roughness: 0.25, metalness: 0.6, name: 'cabin' });
+  // Glass cabin, set slightly back: bright enough to read against the
+  // body at contact-sheet size, with a pale rim of reflected sky.
+  const cabin = box(THREE, 1.7, 0.55, 2.0, 0x3a5a72, { roughness: 0.18, metalness: 0.65, emissive: 0x16283a, emissiveIntensity: 0.7, name: 'cabin' });
   cabin.position.set(0, 1.15, -0.3);
   g.add(cabin);
 
-  // Headlights (front, +Z) — warm white, slightly emissive.
+  // Headlights (front, +Z) — warm white, strongly emissive so they read.
   for (const sx of [-0.7, 0.7]) {
-    const hl = box(THREE, 0.35, 0.18, 0.1, 0xfff2c8, { emissive: 0xfff2c8, emissiveIntensity: 0.9, name: 'headlight' });
+    const hl = box(THREE, 0.35, 0.18, 0.1, 0xfff2c8, { emissive: 0xfff2c8, emissiveIntensity: 1.6, name: 'headlight' });
     hl.position.set(sx, 0.55, 2.32);
     g.add(hl);
   }
@@ -78,15 +79,23 @@ export function makeCarMesh(THREE, color, opts) {
     g.add(tl);
   }
 
-  // Wheels: dark cylinders, axle along X.
+  // Wheels: dark cylinders, axle along X, with a pale metal hub cap on
+  // the outer face so the wheel reads as a wheel, not a black disc.
   const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 14);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.9, metalness: 0.1 });
+  const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.34, 10);
+  const hubMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d8, roughness: 0.35, metalness: 0.8 });
   for (const [wx, wz] of [[-1.0, 1.5], [1.0, 1.5], [-1.0, -1.5], [1.0, -1.5]]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.z = Math.PI / 2;
     w.position.set(wx, 0.42, wz);
     w.name = 'wheel';
     g.add(w);
+    const hub = new THREE.Mesh(hubGeo, hubMat);
+    hub.rotation.z = Math.PI / 2;
+    hub.position.set(wx, 0.42, wz);
+    hub.name = 'wheel-hub';
+    g.add(hub);
   }
 
   // Spoiler: thin blade on two struts at the rear.
@@ -106,11 +115,11 @@ export function makeCarMesh(THREE, color, opts) {
     const base = box(THREE, 1.2, 0.12, 0.4, 0x222222, { name: 'lightbar-base' });
     base.position.set(0, 1.5, -0.3);
     g.add(base);
-    const red = box(THREE, 0.55, 0.16, 0.42, 0xff2a2a, { emissive: 0xff2a2a, emissiveIntensity: 1.2, name: 'lightbar-red' });
-    red.position.set(-0.3, 1.54, -0.3);
+    const red = box(THREE, 0.6, 0.2, 0.46, 0xff2a2a, { emissive: 0xff2a2a, emissiveIntensity: 2.2, name: 'lightbar-red' });
+    red.position.set(-0.32, 1.56, -0.3);
     g.add(red);
-    const blue = box(THREE, 0.55, 0.16, 0.42, 0x2a6aff, { emissive: 0x2a6aff, emissiveIntensity: 1.2, name: 'lightbar-blue' });
-    blue.position.set(0.3, 1.54, -0.3);
+    const blue = box(THREE, 0.6, 0.2, 0.46, 0x2a6aff, { emissive: 0x2a6aff, emissiveIntensity: 2.2, name: 'lightbar-blue' });
+    blue.position.set(0.32, 1.56, -0.3);
     g.add(blue);
   }
 

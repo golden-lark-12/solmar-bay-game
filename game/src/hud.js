@@ -78,13 +78,14 @@ export class Hud {
       '.hud-dialogue-text{flex:1}',
       '.hud-dialogue-line{font-size:16px;line-height:1.45;margin-top:3px}',
       '.hud-bl{position:absolute;left:12px;bottom:12px;width:330px}',
-      '.hud-rank{font-size:30px;font-weight:bold;color:#ffd76a;line-height:1.05;text-shadow:0 2px 6px rgba(0,0,0,0.7)}',
+      '.hud-rank{font-size:38px;font-weight:bold;color:#ffd76a;line-height:1.05;text-shadow:0 2px 6px rgba(0,0,0,0.7)}',
       '.hud-rpbar{height:12px;background:rgba(255,255,255,0.18);border-radius:6px;margin-top:6px;overflow:hidden}',
       '.hud-rpfill{height:100%;background:linear-gradient(90deg,#ff8a2a,#ffd76a);border-radius:6px}',
       '.hud-rptext{font-size:17px;font-weight:bold;margin-top:5px}',
       '.hud-ladder{font-size:13px;color:#e8e8e8;margin-top:6px;line-height:1.5}',
-      '.hud-cash{font-size:22px;font-weight:bold;color:#7dff8a;margin-top:8px}',
-      '.hud-district{font-size:15px;font-weight:bold;margin-top:4px}',
+      '.hud-cash{font-size:28px;font-weight:bold;color:#7dff8a;margin-top:8px}',
+      '.hud-debt{font-size:32px;font-weight:bold;color:#ffd76a;margin-top:4px;text-shadow:0 2px 6px rgba(0,0,0,0.7)}',
+      '.hud-district{font-size:19px;font-weight:bold;margin-top:4px}',
       '.hud-clock{font-size:15px;color:#ffd76a;margin-top:2px}',
       '.hud-br{position:absolute;right:12px;bottom:12px;text-align:right}',
       '.hud-minimap{width:200px;height:200px;border-radius:50%;border:3px solid rgba(255,215,106,0.6);background:#12202e;display:block;margin-left:auto}',
@@ -170,6 +171,7 @@ export class Hud {
     this.rptextEl = this.el('div', 'hud-rptext', this.blEl);
     this.ladderEl = this.el('div', 'hud-ladder', this.blEl);
     this.cashEl = this.el('div', 'hud-cash', this.blEl);
+    this.debtEl = this.el('div', 'hud-debt', this.blEl);
     this.districtEl = this.el('div', 'hud-district', this.blEl);
     this.standingEl = this.el('div', 'hud-district', this.blEl);
     this.clockEl = this.el('div', 'hud-clock', this.blEl);
@@ -313,6 +315,7 @@ export class Hud {
 
     // Cash / clock / wanted.
     this.setText(this.cashEl, 'cash', '$' + (vm.cash || 0).toLocaleString('en-US'));
+    this.setText(this.debtEl, 'debt', 'ALBA HOLDINGS · $' + (vm.debt || 0).toLocaleString('en-US') + ' OWED');
     this.setText(this.clockEl, 'clock', vm.clock || '');
     const wanted = vm.wanted || 0;
     this.setText(this.wantedEl, 'wanted', '★'.repeat(wanted) + '☆'.repeat(Math.max(0, 5 - wanted)));

@@ -1,8 +1,29 @@
 // main.js — Puerto Alba: open-world coastal crime game.
 // Ria Solano, getaway driver. Story arc "The Debt": 12 jobs, crew, ranks,
 // garage + nitro, street races, districts + standing, police wanted 0-5
-// with helicopter, combat, save/load. Staged shots via ?shot=chase|briefing|
-// combat|vista &seed=7. Shot staging, HUD data and the game loop live here.
+// with helicopter, combat, save/load. Staged shots via ?shot=cover|chase|
+// briefing|combat|vista &seed=7. Shot staging, HUD data and the game loop
+// live here. Playtest: 25 checks, 0 console errors.
+// Module map — one line per system (line counts measured at build):
+//   utils.js (62) — math helpers, seeded + unseeded random, formatting
+//   city.js (486) — world, roads, buildings, signs, pier, lighthouse, sun
+//   districts.js (63) — the 5 districts + standing
+//   missions.js (321) — the 12 jobs (M1-M12), ranks, stages, dialogue
+//   races.js (124) — street races, checkpoints, best times
+//   garage.js (56) — garage shop + upgrades
+//   combat.js (81) — 6 weapons, firing, wheel selection
+//   police.js (321) — wanted levels, cruisers, dispatch, helicopter
+//   vehicle.js (261) — cars: body, glass cabin, wheels, light bars
+//   player.js (92) — Ria on foot
+//   traffic.js (100) — traffic cars
+//   pedestrians.js (88) — pedestrians
+//   effects.js (212) — explosions, muzzle flashes, sparks, smoke
+//   hud.js (594) — HUD: cash, debt, rank, mission, dispatch, minimap
+//   ui.js (84) — start / pause / end screens
+//   save.js (40) — save / load
+//   input.js (78) — keyboard + mouse
+//   audio.js (147) — engine, sirens, radio, sound effects
+//   main.js (this file) — boot, game loop, cameras, screenshot staging
 
 import { clamp, angleLerp, angleDiff } from './utils.js';
 import { WORLD, buildCity, collideCircle } from './city.js';
@@ -117,6 +138,7 @@ export class Game {
 
     // Progress + run state.
     this.cash = 1200;
+    this.debt = 40000;
     this.rp = 0;
     this.timeOfDay = 17 * 60 + 42;
     this.mode = 'menu';
@@ -359,6 +381,7 @@ export class Game {
 
   _resetProgress() {
     this.cash = 1200;
+    this.debt = 40000;
     this.rp = 0;
     this.timeOfDay = 17 * 60 + 42;
     this._done = new Set();
@@ -456,6 +479,7 @@ export class Game {
       this.rp = data.rp !== undefined ? data.rp : 0;
       this.timeOfDay = data.timeOfDay !== undefined ? data.timeOfDay : this.timeOfDay;
       this._done = new Set(data.completedJobs || []);
+      this.debt = this._done.has('M8') ? 0 : 40000;
       if (data.raceBest) this._raceBest = data.raceBest;
       if (data.owned) this._ownedUpgrades = new Set(data.owned);
       if (data.car) {
@@ -493,6 +517,7 @@ export class Game {
       inCar: !!this.player.inCar,
       mission: job ? job.id + ' stage ' + (this._stageIndex + 1) : null,
       cash: this.cash,
+      debt: this.debt,
       rp: this.rp,
       completedJobs: this._doneIds(),
       nitroOwned: this._nitroOwned(),
@@ -691,7 +716,7 @@ export class Game {
       if (target) return [[px, pz], target];
     }
     // Staged shots always show a gold route on the minimap: the road ahead.
-    if (this.shotMode === 'chase' || this.shotMode === 'combat' || this.shotMode === 'briefing') {
+    if (this.shotMode === 'cover' || this.shotMode === 'chase' || this.shotMode === 'combat' || this.shotMode === 'briefing') {
       const h = this.player.inCar ? this.car.heading : this.player.heading;
       return [[px, pz], [px + Math.sin(h) * 150, pz + Math.cos(h) * 150]];
     }
@@ -732,6 +757,7 @@ export class Game {
     } catch (e) { policeDots = []; }
     return {
       cash: this.cash,
+      debt: this.debt,
       rp: this.rp,
       rank: this._rankName(this.rp),
       rankProgress: this._rankProgress(this.rp),
@@ -750,7 +776,7 @@ export class Game {
       briefing: this.briefing,
       dialogue: this.dialogue,
       hint: 'M — start job · Shift — Nitro · F — weapon · Tab — wheel',
-      hideHint: this.shotMode === 'chase',
+      hideHint: !!this.shotMode,
       speedKmh: inCar ? Math.abs(this.car.speed) * 3.6 : 0,
       carName: this.car.name,
       condition: this.car.condition,
@@ -999,6 +1025,7 @@ export class Game {
     this.cash += rewardCash;
     this.rp += rewardRp;
     this._done.add(job.id);
+    if (job.id === 'M8') this.debt = 0;
     this._jobId = null;
     this._stageIndex = 0;
     this.hud.toast('Job complete: ' + job.name + ' — +$' + rewardCash.toLocaleString('en-US') + ' · +' + rewardRp + ' RP');
@@ -1219,10 +1246,92 @@ export class Game {
   _applyShot(shot) {
     this.traffic.spawn(16);
     this.pedestrians.spawn(20);
-    if (shot === 'briefing') this._stageBriefing();
+    if (shot === 'cover') this._stageCover();
+    else if (shot === 'briefing') this._stageBriefing();
     else if (shot === 'combat') this._stageCombat();
     else if (shot === 'vista') this._stageVista();
     else this._stageChase();
+  }
+
+  _stageCover() {
+    this._stageProgression(24500, 1100, 'M8');
+    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
+    this._shotStageText = 'Deliver the bag on the Strand';
+    const job = this.missions.job('M8');
+    if (job && job.dialogue && job.dialogue[1]) this.dialogue = this._parseDialogue(job.dialogue[1]);
+    this.dialogueT = 9999;
+    this.player.inCar = true;
+    if (this.player.group) this.player.group.visible = false;
+    // Ria faces EAST down the Strand (heading 1.57): from a camera on
+    // the south verge looking north-west, the nose points right, the
+    // ALBA sign reads mid-distance beyond the car, and the low sun
+    // glows ahead over the city. Camera sits in the clear verge
+    // (z=216, south of the road), never inside the random building row.
+    this.car.setPos(-52, 200, 1.57);
+    this.car.speed = 0;
+    this.camHeading = 1.57;
+    this.police.setWanted(5);
+    this.police.syncUnits(-52, 200, 1.57);
+    this._recolorPolice();
+    // Cruisers staggered close behind in the far lane, two more further
+    // back (one falls out of frame; dispatch still lists all five).
+    this._stagedPolice = [
+      { dx: -10, dz: -4 }, { dx: -14, dz: -2 }, { dx: -18, dz: -5 },
+      { dx: -22, dz: -3 }, { dx: -26, dz: -4 }
+    ];
+    this._pinPolice('chase');
+    // Dim the heli cone for the cover only: translucent, never a white
+    // triangle over the frame centre (police.js default is 0.30 / 0.34).
+    try {
+      if (this.police.heli) {
+        if (this.police.heli.cone) this.police.heli.cone.material.opacity = 0.12;
+        if (this.police.heli.pool) this.police.heli.pool.material.opacity = 0.15;
+      }
+    } catch (e) { /* ignore */ }
+    // Ambient traffic rolling east along the Strand, slow enough to hold
+    // the frame through the settle.
+    const tSpots = [
+      { x: 6, z: 196 }, { x: -88, z: 204 }, { x: 34, z: 204 }, { x: -112, z: 196 },
+      { x: 62, z: 196 }, { x: -136, z: 204 }, { x: 90, z: 204 }, { x: -160, z: 196 }
+    ];
+    try {
+      const cars = this.traffic.cars || [];
+      cars.forEach((t, i) => {
+        const s = tSpots[i % tSpots.length];
+        t.setPos(s.x, s.z, 1.57);
+        t.speed = 0;
+        if (t.car && t.car.mesh && Math.hypot(t.car.x - this.car.x, t.car.z - this.car.z) < 14) t.car.mesh.visible = false;
+      });
+      for (const c of this.traffic.parked || []) {
+        if (c && c.mesh && Math.hypot(c.x - this.car.x, c.z - this.car.z) < 30) c.mesh.visible = false;
+      }
+    } catch (e) { /* ignore */ }
+    this._nextBoom = Date.now() + 1500;
+    // Low sun ahead: halo + core sprites in the frame, above the
+    // rooftops and close enough to beat the fog.
+    const sunStops = [[0, 'rgba(255,250,220,1)'], [0.4, 'rgba(255,200,120,0.85)'], [1, 'rgba(255,120,40,0)']];
+    this.effects._sprite(sunStops, 70, 0.9, true, -140, 30, 150);
+    this.effects._sprite(sunStops, 30, 1, true, -140, 30, 150);
+    // Distinct sun disc for the cover: the vista's sunBall, moved into
+    // this frame and scaled up (probe-validated: hard-edged ~130 px disc).
+    try {
+      if (this.city.sunBall) {
+        this.city.sunBall.position.set(-211.6, 70, 358.1);
+        this.city.sunBall.scale.set(1.8, 1.8, 1.8);
+      }
+    } catch (e) { /* ignore */ }
+    // Persistent road fireball ahead of the car: the boom timer below
+    // adds smoke and flash, but the flame itself is up in every frame,
+    // anchored ON the road, never floating.
+    try {
+      const roadFire = [[0, 'rgba(255,200,80,1)'], [0.4, 'rgba(255,110,20,0.95)'], [1, 'rgba(200,40,0,0)']];
+      this.effects._sprite(roadFire, 3.4, 0.95, true, -70, 1.8, 206);
+      this.effects._sprite(roadFire, 1.9, 1, true, -70, 2.1, 206);
+    } catch (e) { /* ignore */ }
+    // Fixed 3/4 front-on camera: car at the left third, nose right.
+    this._shotCam = { pos: [-44, 2.8, 190], look: [-78, 1, 210] };
+    this.camera.position.set(-44, 2.8, 190);
+    this.camera.lookAt(-78, 1, 210);
   }
 
   _stageChase() {
@@ -1274,7 +1383,11 @@ export class Game {
 
   _stageBriefing() {
     this._stageProgression(24500, 1100, 'M8');
-    this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
+    // The briefing panel below is the ONE M8 panel in this shot: no
+    // mission panel (clear the staged job + shot mission so _missionVM
+    // has nothing to show). The gold route still shows via shotMode.
+    this._shotMission = null;
+    this._jobId = null;
     this._shotStageText = 'Deliver the bag on the Strand';
     const job = this.missions.job('M8');
     if (job && job.dialogue && job.dialogue[0]) this.dialogue = this._parseDialogue(job.dialogue[0]);
@@ -1313,9 +1426,9 @@ export class Game {
         t.speed = 12;
       });
     } catch (e) { /* ignore */ }
-    this._shotCam = { pos: [13, 4.2, 213], look: [0, 1.2, 201] };
-    this.camera.position.set(13, 4.2, 213);
-    this.camera.lookAt(0, 1.2, 201);
+    this._shotCam = { pos: [-38, 3.0, 214], look: [-50, 1.4, 196] };
+    this.camera.position.set(-38, 3.0, 214);
+    this.camera.lookAt(-50, 1.4, 196);
   }
 
   _stageCombat() {
@@ -1333,7 +1446,20 @@ export class Game {
     this.police.setWanted(3);
     this.police.syncUnits(-20, 200, 1.57);
     this._recolorPolice();
+    // Burning cruiser: the lead unit sits close ahead of Ria, in frame.
+    this._stagedPolice = [{ dx: 10, dz: -6 }, { dx: 16, dz: 6 }, { dx: 20, dz: -9 }];
     this._pinPolice('combat');
+    // Persistent flame on the lead cruiser: re-pinning holds the unit
+    // on the same spot every frame, so the fire stays on the car.
+    try {
+      const lead = this.police.cars && this.police.cars[0];
+      if (lead) {
+        const fireStops = [[0, 'rgba(255,120,20,1)'], [0.5, 'rgba(230,60,0,0.95)'], [1, 'rgba(180,30,0,0)']];
+        this.effects._sprite(fireStops, 3.2, 0.95, true, lead.x, 1.2, lead.z);
+        this.effects._sprite(fireStops, 1.6, 1, true, lead.x, 1.5, lead.z);
+      }
+    } catch (e) { /* ignore */ }
+    this._nextBurn = Date.now() + 400;
     // Visible gun in hand, held forward and aimed — on the camera side of
     // the player so its profile reads from the rear camera, not a bar at
     // the shoulder. Player local -X is the camera side (south).
@@ -1426,9 +1552,16 @@ export class Game {
     this.car.speed = 0;
     if (this.city.sunBall) this.city.sunBall.scale.set(1.8, 1.8, 1.8);
     this._addLensFlare();
-    this._shotCam = { pos: [130, 120, 40], look: [-160, 50, 330] };
-    this.camera.position.set(130, 120, 40);
-    this.camera.lookAt(-160, 50, 330);
+    // Gold glitter low over the water ahead: the sunset on the bay.
+    try {
+      const goldStops = [[0, 'rgba(255,220,140,0.9)'], [0.5, 'rgba(255,170,70,0.45)'], [1, 'rgba(255,130,40,0)']];
+      this.effects._sprite(goldStops, 130, 0.4, true, 60, 5, 300);
+    } catch (e) { /* ignore */ }
+    // Low from the water: pier + lighthouse lead in, ferris wheel and
+    // the city beyond, boats on the gold water.
+    this._shotCam = { pos: [2, 3.8, 394], look: [52, 12, 262] };
+    this.camera.position.set(2, 3.8, 394);
+    this.camera.lookAt(52, 12, 262);
   }
 
   _fireCombatBurst() {
@@ -1552,6 +1685,43 @@ export class Game {
       }
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+    } else if (shot === 'cover') {
+      // STATIC staging: the car never drives (deterministic framing for
+      // sign / heli / sun). Traffic + pedestrians give ambient life,
+      // police + heli are re-pinned every frame, the boom timer fires
+      // the fireball ON the road ahead of the car.
+      this._pinPolice('chase');
+      // Heli camera-relative, offset to the left of frame against sky,
+      // cone dimmed so the road stays readable through it.
+      if (this._shotCam) {
+        const dx = this._shotCam.look[0] - this._shotCam.pos[0];
+        const dz = this._shotCam.look[2] - this._shotCam.pos[2];
+        const len = Math.hypot(dx, dz) || 1;
+        const fx = dx / len;
+        const fz = dz / len;
+        const rx = -fz;
+        const rz = fx;
+        const hx = this._shotCam.pos[0] + fx * 38 - rx * 16;
+        const hz = this._shotCam.pos[2] + fz * 38 - rz * 16;
+        this._pinHeli(hx, hz, 0, 0, 19);
+      }
+      try {
+        if (this.police.heli) {
+          if (this.police.heli.cone) this.police.heli.cone.material.opacity = 0.12;
+          if (this.police.heli.pool) this.police.heli.pool.material.opacity = 0.15;
+        }
+      } catch (e) { /* ignore */ }
+      if (Date.now() >= this._nextBoom) {
+        this.effects.explosion(-70, 206, 0.4);
+        this._nextBoom = Date.now() + 900;
+      }
+      // Traffic FROZEN in the cover branch: no update call, so staged
+      // cars hold their spots and nothing steers into the hero slot.
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+      if (this._shotCam) {
+        this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
+        this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
+      }
     } else if (shot === 'briefing') {
       const px = this.player.x;
       const pz = this.player.z;
@@ -1571,6 +1741,18 @@ export class Game {
       if (Date.now() >= this._nextMuzzle) {
         this._fireCombatBurst();
         this._nextMuzzle = Date.now() + 250;
+      }
+      // Burning cruiser: re-fire the blast on the lead unit so flame +
+      // smoke are up in every captured frame.
+      if (Date.now() >= (this._nextBurn || 0)) {
+        try {
+          const lead = this.police.cars && this.police.cars[0];
+          if (lead) {
+            this.effects.explosion(lead.x, lead.z, 0.45);
+            this.effects.smoke(lead.x, 2.5, lead.z);
+          }
+        } catch (e) { /* ignore */ }
+        this._nextBurn = Date.now() + 900;
       }
       // Persistent muzzle burst: flicker it, never let it fade out.
       if (this._muzzleFlash && this._muzzleAnchor) {
@@ -1596,6 +1778,7 @@ export class Game {
       this.camera.lookAt(px + fx * 8, 1.4, pz + fz * 8);
     } else if (shot === 'vista') {
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
       if (this._shotCam) {
         this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
         this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
