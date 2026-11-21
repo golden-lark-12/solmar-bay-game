@@ -1067,22 +1067,33 @@ export class Game {
         const off = (i - 1) * 4.5;
         c.setPos(this.car.x + 10, 200 + off, 1.57 + Math.PI / 2);
       });
-      // Helicopter low + close + large, spotlight cone hard and wide.
+      // Helicopter re-staged (v4r5): smaller + farther + side-on, in open
+      // sky, so the whole aircraft (rotor X, body, gold stripe, glass,
+      // tail + fin) reads at a glance. Moved to the far side (+z) in this
+      // round: parked on the near side the tail sat behind the Strand
+      // buildings and the fireball glow washed the body pale.
       if (this.police.heli) {
         const h = this.police.heli;
-        h.group.position.set(this.car.x + 13, 9, this.car.z - 8);
-        h.group.scale.set(2, 2, 2);
-        h.cone.position.set(this.car.x + 13, 4.5, this.car.z - 8);
+        h.group.position.set(this.car.x + 33, 9, this.car.z + 5);
+        h.group.scale.set(1.5, 1.5, 1.5);
+        h.group.rotation.y = 0;
+        // Cone beyond the heli (v4r5): a cone on the heli's line sits
+        // between the camera and the aircraft and washes it out. Past the
+        // heli it can never sit in front of the body; the beam still lands
+        // on the road ahead, apex behind the mission card.
+        h.cone.position.set(this.car.x + 45, 4.5, this.car.z + 2);
         h.cone.scale.set(1.4, 1.0, 1.4);
         h.cone.material.opacity = 0.3;
       }
       // One timed blast ahead of the car (game seconds crawl under
       // swiftshader, so a re-fired blast never fades and they stack into
-      // a diffuse glow). Fired once, ~1-3 frames before capture: a single
-      // compact deep-orange ball, centre-left, behind the roadblock.
+      // a diffuse glow). Fired once, ~0.8 s before capture (scheduled from
+      // ready, see _signalReady): a single compact deep-orange ball,
+      // centre-left, behind the roadblock. Moved to x+12 / z 194 (v4r5):
+      // at x+20 it sat under the heli and its glow washed the body pale.
       if (this._nextBoom && now >= this._nextBoom) {
-        this.effects.explosion(this.car.x + 20, 197, 0.7);
-        this.effects.smoke(this.car.x + 20, 3, 197);
+        this.effects.explosion(this.car.x + 12, 194, 0.7);
+        this.effects.smoke(this.car.x + 12, 3, 194);
         this._nextBoom = 0;
       }
       if (this.city.ferrisWheel) this.city.ferrisWheel.rotation.z += dt * 0.05;
@@ -1105,12 +1116,15 @@ export class Game {
         c.setPos(this.player.x + o.dx, 200 + o.dz, 1.57);
         c.speed = 0;
       });
-      // Heli low + close with a hard cone.
+      // Heli re-staged (v4r5): same open-sky side-on framing as the cover,
+      // far side (+z) so the tail clears the Strand buildings.
       if (this.police.heli) {
         const h = this.police.heli;
-        h.group.position.set(this.player.x + 14, 10, this.player.z - 8);
-        h.group.scale.set(2, 2, 2);
-        h.cone.position.set(this.player.x + 14, 5, this.player.z - 8);
+        h.group.position.set(this.player.x + 33, 9, this.player.z + 4);
+        h.group.scale.set(1.5, 1.5, 1.5);
+        h.group.rotation.y = 0;
+        // Cone beyond the heli (v4r5): same washout fix as the cover.
+        h.cone.position.set(this.player.x + 45, 5, this.player.z + 2);
         h.cone.scale.set(1.4, 1.0, 1.4);
         h.cone.material.opacity = 0.3;
       }
@@ -1150,6 +1164,11 @@ export class Game {
     if (!this._readySignalled) {
       this._readySignalled = true;
       window.__gameReady = true;
+      // Fireball timing (v4r5): the screenshot is taken 5 s after ready,
+      // so schedule the single blast for ready + 4.2 s — a fresh ball
+      // ~0.8 s before capture. Firing from staging (+4 s) left the ball
+      // faded or gone whenever init ran slow.
+      if (this.shotMode && this.shot === 'chase') this._nextBoom = Date.now() + 4200;
     }
   }
 

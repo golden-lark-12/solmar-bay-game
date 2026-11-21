@@ -116,41 +116,54 @@ export class Police {
     inner.position.y = -3;
     g.add(inner);
     // Dark navy body: high contrast so the heli reads against the bright orange sky.
+    // MeshBasicMaterial (v4r5): Lambert navy washed out to pale cream under
+    // the golden-hour sun + the spotlight cone in front of it. Flat dark
+    // navy renders as a true silhouette from every angle.
     const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 6.5),
-      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
+      new THREE.MeshBasicMaterial({ color: 0x12202e }));
     inner.add(body);
-    // Bright gold band: the accent stripe.
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 6.6),
+    // Bright gold band: the accent stripe. Stands proud of the body
+    // (0.25 a side) so the gold reads from the side, not flush with it.
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.7, 7.0),
       new THREE.MeshBasicMaterial({ color: 0xffd76a }));
     stripe.position.y = 0.2; inner.add(stripe);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 5),
-      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
+      new THREE.MeshBasicMaterial({ color: 0x12202e }));
     tail.position.set(0, 0.3, -5); inner.add(tail);
     // Vertical tail fin: makes the tail read from behind/below.
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 1.4),
-      new THREE.MeshLambertMaterial({ color: 0x1a2a3a }));
+      new THREE.MeshBasicMaterial({ color: 0x12202e }));
     fin.position.set(0, 0.9, -7.2); inner.add(fin);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 1.8),
-      new THREE.MeshLambertMaterial({ color: 0x2a6a8a }));
+      new THREE.MeshBasicMaterial({ color: 0x2a6a8a }));
     glass.position.set(0, 0.2, 2.6); inner.add(glass);
     // Coning tilt: the rotor spins about Y, so a flat bar is edge-on and
     // invisible at some phases and sits above the frame when the heli rides
     // high. Tilting the spin plane ~26 deg keeps one blade tip dipping
     // below the body top at every phase, so a rotor blade is always in
-    // frame beside the body. Blades are long (16) so they read as a rotor
-    // spanning the sky, not stubs at the frame edge.
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.7),
-      new THREE.MeshLambertMaterial({ color: 0x222222 }));
+    // frame beside the body. Blades are 10 long (v4r5, was 16): at 16 the
+    // rotor spanned the whole frame as a beam, not a rotor.
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 0.7),
+      new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
     rotor.position.y = 1.3;
     rotor.rotation.z = 0.45;
     inner.add(rotor);
     // Second blade at 90 deg, parented to the rotor so the pair spins as
     // an X: a single bar is edge-on and invisible at some phases, an X
     // always shows a broadside blade.
-    const rotor2 = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.7),
-      new THREE.MeshLambertMaterial({ color: 0x222222 }));
+    const rotor2 = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 0.7),
+      new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
     rotor2.rotation.y = Math.PI / 2;
     rotor.add(rotor2);
+    // Rotor disc (v4r5): a translucent dark disc at the hub plane. The
+    // spinning X alone catches a bad phase in a still frame (short stubs
+    // that never connect to the body); the disc reads as rotor blur at
+    // every phase and every angle, so the aircraft reads as a helicopter.
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(5, 24),
+      new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 1.3;
+    inner.add(disc);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xfff2c0 }));
     lamp.position.set(0, -1.1, 2.5); inner.add(lamp);
