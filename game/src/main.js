@@ -1360,13 +1360,14 @@ export class Game {
     } catch (e) { /* ignore */ }
     this._fireCombatBurst();
     this._nextMuzzle = Date.now() + 250;
-    // Wheel open, dispatch hidden — they never overlap.
+    // Wheel docked right (6ca222f layout), dispatch hidden — the heli,
+    // gun and muzzle stay clear of the panel; they never overlap.
     const weapons = (this.combat.weapons || []).map((w, i) => ({
       name: w.name, ammo: w.ammo, locked: !w.unlocked,
       selected: i === this.combat.selected,
       lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED'
     }));
-    this.hud.showWheel(weapons, this.combat.selected || 0, null);
+    this.hud.showWheel(weapons, this.combat.selected || 0, { left: '76%', top: '16%' });
   }
 
   _stageVista() {
@@ -1385,9 +1386,11 @@ export class Game {
 
   _fireCombatBurst() {
     const h = this.player.heading;
-    const mx = this.player.x + Math.sin(h) * 1.1;
-    const mz = this.player.z + Math.cos(h) * 1.1;
-    this.effects.muzzle(mx, 1.5, mz);
+    // Muzzle at the actual gun tip: the gun sits at local (-0.62, 1.25,
+    // ~1.2 forward), so offset forward 1.2 and to the gun side.
+    const mx = this.player.x + Math.sin(h) * 1.2 - Math.cos(h) * 0.62;
+    const mz = this.player.z + Math.cos(h) * 1.2 + Math.sin(h) * 0.62;
+    this.effects.muzzle(mx, 1.3, mz);
     // Hit effect on the closest cruiser: sparks + smoke + damage flash.
     let target = null;
     let best = 1e9;

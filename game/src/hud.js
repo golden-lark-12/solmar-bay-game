@@ -235,10 +235,34 @@ export class Hud {
     this.wheelEl.innerHTML = '';
     const title = this.el('div', 'hud-wheel-title', this.wheelEl);
     title.textContent = 'WEAPONS — hold Tab, pick 1-6';
+    // Docked (positioned) wheel: compact, shifted right so the 3D action
+    // (helicopter, gun, muzzle) stays clear of the panel; default is the
+    // large centred modal used by the interactive Tab wheel.
+    const docked = !!(position && (position.left || position.top));
+    if (docked) {
+      if (position.left) this.wheelEl.style.left = position.left;
+      if (position.top) this.wheelEl.style.top = position.top;
+      this.wheelEl.style.padding = '10px 12px';
+      this.wheelEl.style.gap = '4px';
+      title.style.fontSize = '18px';
+      title.style.fontWeight = 'bold';
+      title.style.color = '#ffd76a';
+    } else {
+      this.wheelEl.style.left = '';
+      this.wheelEl.style.top = '';
+      this.wheelEl.style.padding = '';
+      this.wheelEl.style.gap = '';
+      title.style.fontSize = '';
+      title.style.fontWeight = '';
+      title.style.color = '';
+    }
     const row = this.el('div', 'hud-wheel-row', this.wheelEl);
+    if (docked) row.style.gap = '6px';
     list.forEach((w, i) => {
       const slot = this.el('div', 'hud-wheel-slot' + (i === selected ? ' sel' : ''), row);
+      if (docked) slot.style.width = '84px';
       const boxEl = this.el('div', 'hud-weapon' + (w.locked ? ' locked' : '') + (i === selected ? ' selected' : ''), slot);
+      if (docked) { boxEl.style.width = '72px'; boxEl.style.padding = '6px 4px'; }
       const name = this.el('div', 'hud-weapon-name', boxEl);
       name.textContent = (i + 1) + ' · ' + w.name;
       const ammo = this.el('div', 'hud-weapon-ammo', boxEl);

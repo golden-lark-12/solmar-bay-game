@@ -84,15 +84,21 @@ export class Effects {
   }
 
   muzzle(x, y, z) {
-    // Bright burst at the gun tip: hot core, warm edge, gone in a blink.
+    // Bright burst at the gun tip: tight hot core + warm halo + a short
+    // light. Lives past the 250ms burst interval (and past a slow
+    // headless frame), so a bright flash is visible in every frame,
+    // without overlapping generations blowing the scene out.
     this._sprite(
-      [[0, 'rgba(255,250,200,1)'], [0.4, 'rgba(255,200,80,0.9)'], [1, 'rgba(255,120,20,0)']],
-      2.4, 1, true, x, y, z, 0.12
+      [[0, 'rgba(255,250,200,1)'], [0.3, 'rgba(255,210,90,0.95)'], [1, 'rgba(255,120,20,0)']],
+      3.4, 1, true, x, y, z, 0.5
     );
     this._sprite(
-      [[0, 'rgba(255,220,120,0.9)'], [1, 'rgba(255,120,20,0)']],
-      4.2, 0.7, true, x, y, z, 0.14
+      [[0, 'rgba(255,220,120,0.5)'], [1, 'rgba(255,120,20,0)']],
+      4.0, 0.5, true, x, y, z, 0.55
     );
+    const light = new this.THREE.PointLight(0xffc040, 4, 14);
+    light.position.set(x, y + 0.5, z);
+    this._add(light, 0.4, 4, {});
   }
 
   sparks(x, y, z) {
