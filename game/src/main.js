@@ -92,6 +92,8 @@ export class Game {
 
     // Renderer / scene / camera.
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     document.body.appendChild(this.renderer.domElement);
@@ -101,9 +103,9 @@ export class Game {
     this.camera.lookAt(0, 10, 100);
 
     // Golden-hour light.
-    const hemi = new THREE.HemisphereLight(0xffd8b0, 0x8a5a3a, 0.95);
+    const hemi = new THREE.HemisphereLight(0xffd8b0, 0x8a5a3a, 0.7);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffc890, 1.25);
+    const sun = new THREE.DirectionalLight(0xffc890, 1.4);
     sun.position.set(-300, 220, 300);
     this.scene.add(sun);
 
@@ -647,6 +649,18 @@ export class Game {
   _missionVM() {
     if (this.shotMode && this._shotMission) {
       const combatShot = this.shotMode === 'combat';
+      const raceShot = this.shotMode === 'race' && this._shotRace;
+      if (raceShot) {
+        return {
+          title: this._shotMission.code + ' — ' + this._shotMission.name,
+          giver: this._shotMission.giver + ' · ' + this._shotMission.role,
+          stage: this._shotStageText,
+          stageLabel: 'STAGE 1/1',
+          next: 'Beat the best time',
+          progress: 0.5,
+          timer: ''
+        };
+      }
       return {
         title: this._shotMission.code + ' — ' + this._shotMission.name,
         giver: this._shotMission.giver + ' · ' + this._shotMission.role,
@@ -716,7 +730,7 @@ export class Game {
       if (target) return [[px, pz], target];
     }
     // Staged shots always show a gold route on the minimap: the road ahead.
-    if (this.shotMode === 'cover' || this.shotMode === 'chase' || this.shotMode === 'combat' || this.shotMode === 'briefing') {
+    if (this.shotMode === 'cover' || this.shotMode === 'chase' || this.shotMode === 'combat' || this.shotMode === 'briefing' || this.shotMode === 'race') {
       const h = this.player.inCar ? this.car.heading : this.player.heading;
       return [[px, pz], [px + Math.sin(h) * 150, pz + Math.cos(h) * 150]];
     }
@@ -775,6 +789,9 @@ export class Game {
       mission: this._missionVM(),
       briefing: this.briefing,
       dialogue: this.dialogue,
+      titleMode: this.shotMode === 'title',
+      hideVehicleHud: !inCar,
+      comms: this.comms || null,
       hint: 'M — start job · Shift — Nitro · F — weapon · Tab — wheel',
       hideHint: !!this.shotMode,
       speedKmh: inCar ? Math.abs(this.car.speed) * 3.6 : 0,
@@ -786,7 +803,8 @@ export class Game {
       weapons: weapons,
       crew: this.crew,
       dispatch: (this.police && this.police.dispatch) || [],
-      hideDispatch: this.shotMode === 'combat',
+      hideDispatch: this.shotMode === 'combat' || this.shotMode === 'race',
+      hideWeapons: this.shotMode === 'race',
       dispatchEmptyText: 'No active units — streets are quiet',
       radio: {
         station: (this.audio && this.audio.station) || 'ALBA FM 98.1',
@@ -1236,6 +1254,12 @@ export class Game {
       const idx = activeJobId ? JOBS.findIndex((j) => j.id === activeJobId) : JOBS.length;
       const doneUpTo = idx < 0 ? JOBS.length : idx;
       for (let i = 0; i < doneUpTo; i++) this._done.add(JOBS[i].id);
+      try {
+        for (let i = 0; i < doneUpTo; i++) {
+          if (this.combat && this.combat.unlockForJob) this.combat.unlockForJob(JOBS[i].id);
+        }
+        if (this.garage && this.garage.owned) this.garage.owned.nitro = true;
+      } catch (e) { /* ignore */ }
     }
     this._jobId = activeJobId || null;
     this._stageIndex = 0;
@@ -1250,6 +1274,8 @@ export class Game {
     else if (shot === 'briefing') this._stageBriefing();
     else if (shot === 'combat') this._stageCombat();
     else if (shot === 'vista') this._stageVista();
+    else if (shot === 'title') this._stageTitle();
+    else if (shot === 'race') this._stageRace();
     else this._stageChase();
   }
 
@@ -1338,19 +1364,20 @@ export class Game {
     this._stageProgression(24500, 1100, 'M8');
     this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
     this._shotStageText = 'Deliver the bag on the Strand';
-    const job = this.missions.job('M8');
-    if (job && job.dialogue && job.dialogue[1]) this.dialogue = this._parseDialogue(job.dialogue[1]);
-    this.dialogueT = 9999;
+    this.dialogue = undefined;
+    this.comms = null;
     this.player.inCar = true;
     if (this.player.group) this.player.group.visible = false;
     this.car.setPos(-40, 200, 1.57);
-    this.car.speed = 42.5;
+    this.car.speed = 37.5;
+    this.car.condition = 75;
     this.camHeading = 1.57;
+    this.combat.selected = 3;
     this.police.setWanted(5);
     this.police.syncUnits(-40, 200, 1.57);
     // Roadblock ahead on the Strand.
     const block = new Car(THREE, this.scene, {
-      x: -25, z: 200, heading: 1.57 + Math.PI / 2, color: 0x1a1a2a,
+      x: -25, z: 200, heading: 1.57 + Math.PI / 2, color: 0x14243f,
       name: 'Interceptor', topSpeed: 31, accel: 16, isPolice: true
     });
     if (this.police.roadblock) this.police.roadblock.push(block);
@@ -1373,12 +1400,26 @@ export class Game {
       { dx: 12, dz: -6 }, { dx: 10, dz: 8 }, { dx: 8, dz: -10 }, { dx: 18, dz: 6 }, { dx: 25, dz: -3 }
     ];
     this._pinPolice('chase');
-    this._nextBoom = Date.now() + 4000;
-    // Sun in frame, ahead and high: halo + core sprites.
-    const sunStops = [[0, 'rgba(255,250,220,1)'], [0.4, 'rgba(255,200,120,0.85)'], [1, 'rgba(255,120,40,0)']];
-    const halo = this.effects._sprite(sunStops, 90, 0.9, true, this.car.x + 280, 120, 190);
-    const core = this.effects._sprite(sunStops, 36, 1, true, this.car.x + 280, 120, 190);
-    this._chaseSun = { halo: halo, core: core };
+    // Grounded burning wreck: a charred, tilted cruiser pinned ahead on
+    // the Strand, with a persistent smoke column + ember core. It replaces
+    // the repeating explosion fireball (which read as floating discs).
+    this._wreckCar = new Car(THREE, this.scene, {
+      x: -16, z: 195, heading: 1.57 + 0.5, color: 0x17130f,
+      name: 'Wreck', topSpeed: 31, accel: 16, isPolice: true
+    });
+    this._wreckCar.speed = 0;
+    try {
+      const smokeStops = [[0, 'rgba(38,36,34,0.62)'], [0.6, 'rgba(30,28,26,0.4)'], [1, 'rgba(24,22,20,0)']];
+      this._wreckSmoke = [];
+      const smokeAt = [[-16, 2.6, 195, 3.0], [-16, 5.2, 195, 4.2], [-16, 8.0, 195, 5.4], [-16, 11.0, 195, 6.6]];
+      for (const [sx, sy, sz, ss] of smokeAt) {
+        this._wreckSmoke.push(this.effects._sprite(smokeStops, ss, 0.6, false, sx, sy, sz));
+      }
+      const emberStops = [[0, 'rgba(255,150,30,1)'], [0.5, 'rgba(240,80,0,0.9)'], [1, 'rgba(180,30,0,0)']];
+      this._wreckEmber = this.effects._sprite(emberStops, 1.1, 1, true, -16, 1.0, 195);
+    } catch (e) { /* ignore */ }
+    this._nextBoom = Infinity;
+    try { if (this.city.setSun) this.city.setSun(this.car.x + 280, 120, 190, 1.5); } catch (e) { /* ignore */ }
   }
 
   _stageBriefing() {
@@ -1435,19 +1476,20 @@ export class Game {
     this._stageProgression(24100, 1150, 'M8');
     this._shotMission = { code: 'M8', name: 'The Debt Paid', giver: 'Don Rafael Alba', role: 'Don of Alba' };
     this._shotStageText = 'Lose the 5-star heat';
-    const job = this.missions.job('M8');
-    if (job && job.dialogue && job.dialogue[1]) this.dialogue = this._parseDialogue(job.dialogue[1]);
-    this.dialogueT = 9999;
+    this.dialogue = undefined;
+    this.comms = { name: 'Don Rafael Alba', role: 'Don of Alba', line: 'Every cruiser in Alba will be looking for you. Make them work for it.' };
     this.player.setPos(-20, 200, 1.57);
     this.player.inCar = false;
     if (this.player.group) this.player.group.visible = true;
     this.car.setPos(-34, 204, 1.57);
     this.car.speed = 0;
-    this.police.setWanted(3);
+    this.police.setWanted(5);
     this.police.syncUnits(-20, 200, 1.57);
     this._recolorPolice();
     // Burning cruiser: the lead unit sits close ahead of Ria, in frame.
-    this._stagedPolice = [{ dx: 10, dz: -6 }, { dx: 16, dz: 6 }, { dx: 20, dz: -9 }];
+    // Five distinct offsets: setWanted(5) spawns five units, and _pinPolice
+    // cycles offsets, so all five must be distinct or units stack.
+    this._stagedPolice = [{ dx: 10, dz: -6 }, { dx: 16, dz: 6 }, { dx: 20, dz: -9 }, { dx: 24, dz: 4 }, { dx: 13, dz: 12 }];
     this._pinPolice('combat');
     // Persistent flame on the lead cruiser: re-pinning holds the unit
     // on the same spot every frame, so the fire stays on the car.
@@ -1511,12 +1553,12 @@ export class Game {
       const coreStops = [[0, 'rgba(255,175,45,1)'], [0.35, 'rgba(255,130,20,1)'], [0.7, 'rgba(240,70,0,0.95)'], [1, 'rgba(210,40,0,0)']];
       const sparkStops = [[0, 'rgba(255,235,150,1)'], [0.5, 'rgba(255,160,40,0.95)'], [1, 'rgba(240,80,0,0)']];
       this._muzzleFlash = [
-        mkSprite(this.effects._texture(haloStops), 2.2, 0.4),
-        mkSprite(this.effects._starTexture(), 1.9, 1),
-        mkSprite(this.effects._texture(coreStops), 1.2, 0.95)
+        mkSprite(this.effects._texture(haloStops), 0.32, 0.4),
+        mkSprite(this.effects._starTexture(), 0.28, 1),
+        mkSprite(this.effects._texture(coreStops), 0.18, 0.95)
       ];
       const ball = new THREE.Mesh(
-        new THREE.SphereGeometry(0.18, 12, 10),
+        new THREE.SphereGeometry(0.03, 12, 10),
         new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 1 })
       );
       ball.renderOrder = 21;
@@ -1524,23 +1566,49 @@ export class Game {
       anchor.add(ball);
       this._muzzleFlash.push(ball);
       const sparkTex = this.effects._texture(sparkStops);
-      const sparkOffs = [[0.5, 0.25, 0.1], [-0.45, 0.3, -0.1], [0.15, -0.45, 0.25]];
+      const sparkOffs = [[0.18, 0.09, 0.04], [-0.16, 0.11, -0.04], [0.05, -0.16, 0.09]];
       for (const [ox, oy, oz] of sparkOffs) {
-        const sp = mkSprite(sparkTex, 0.35, 0.95);
+        const sp = mkSprite(sparkTex, 0.05, 0.95);
         sp.position.set(ox, oy, oz);
         this._muzzleFlash.push(sp);
+      }
+      this._tracers = [];
+      for (const L of [4.5, 5.5, 6.5]) {
+        const tr = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.025, L),
+          new THREE.MeshBasicMaterial({ color: 0xfff6d8, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+        );
+        tr.position.set(0, 0, 0.45 + L / 2);
+        tr.renderOrder = 20;
+        anchor.add(tr);
+        this._tracers.push(tr);
+      }
+    } catch (e) { /* ignore */ }
+    // One walker staged on the crosswalk edge at resolvable size, speed 0
+    // so the settle cannot wander it away: its contact shadow must read.
+    try {
+      const w0 = this.pedestrians && this.pedestrians.walkers && this.pedestrians.walkers[0];
+      if (w0) {
+        w0.x = -14; w0.z = 207.5; w0.speed = 0; w0.heading = 1.57;
+        w0.group.position.set(-14, 0, 207.5);
+        w0.group.rotation.y = 1.57;
+        const w1 = this.pedestrians.walkers[1];
+        const w2 = this.pedestrians.walkers[2];
+        if (w1) {
+          w1.x = -8; w1.z = 208.2; w1.speed = 0; w1.heading = 1.57;
+          w1.group.position.set(-8, 0, 208.2);
+          w1.group.rotation.y = 1.57;
+        }
+        if (w2) {
+          w2.x = -20; w2.z = 209.0; w2.speed = 0; w2.heading = 1.57;
+          w2.group.position.set(-20, 0, 209.0);
+          w2.group.rotation.y = 1.57;
+        }
       }
     } catch (e) { /* ignore */ }
     this._fireCombatBurst();
     this._nextMuzzle = Date.now() + 250;
-    // Wheel docked right (6ca222f layout), dispatch hidden — the heli,
-    // gun and muzzle stay clear of the panel; they never overlap.
-    const weapons = (this.combat.weapons || []).map((w, i) => ({
-      name: w.name, ammo: w.ammo, locked: !w.unlocked,
-      selected: i === this.combat.selected,
-      lockText: w.unlockJob ? 'LOCKED · ' + w.unlockJob : 'LOCKED'
-    }));
-    this.hud.showWheel(weapons, this.combat.selected || 0, { left: '76%', top: '16%' });
+    this.combat.selected = 3;
   }
 
   _stageVista() {
@@ -1562,6 +1630,69 @@ export class Game {
     this._shotCam = { pos: [2, 3.8, 394], look: [52, 12, 262] };
     this.camera.position.set(2, 3.8, 394);
     this.camera.lookAt(52, 12, 262);
+  }
+
+  _stageTitle() {
+    this._stageProgression(24800, 1200, 'M9');
+    this._shotMission = null;
+    this.briefing = undefined;
+    this.dialogue = undefined;
+    this.comms = null;
+    this._jobId = null;
+    this.player.inCar = true;
+    if (this.player.group) this.player.group.visible = false;
+    this.car.setPos(-10, 207, 1.57);
+    this.car.speed = 0;
+    this.car.condition = 100;
+    this.camHeading = 1.57;
+    try { this.police.setWanted(0); } catch (e) { /* ignore */ }
+    try { if (this.city.setSun) this.city.setSun(120, 55, 420, 1.2); } catch (e) { /* ignore */ }
+    this._shotCam = { pos: [-44, 2.8, 193], look: [100, 4, 255] };
+    this.camera.position.set(-44, 2.8, 193);
+    this.camera.lookAt(100, 4, 255);
+    if (this.ui.hideAll) this.ui.hideAll();
+    if (this.ui.showTitle) this.ui.showTitle();
+  }
+
+  _stageRace() {
+    this._stageProgression(24800, 1200, 'M9');
+    this._shotMission = null;
+    this._shotRace = false;
+    this.dialogue = undefined;
+    this.comms = null;
+    this._jobId = null;
+    this.briefing = {
+      title: 'M9 — Strand Grand Prix',
+      giver: 'Rex Calder · Race Promoter',
+      job: 'POS 1/4 · LAP 2/2 — The Strand',
+      objectives: ['Seven gates, three rivals, one beachfront.'],
+      reward: '$4,000',
+      cash: '$24,800'
+    };
+    this.player.inCar = true;
+    if (this.player.group) this.player.group.visible = false;
+    this.car.setPos(-60, 205, 1.57);
+    this.car.speed = 41;
+    this.car.condition = 88;
+    this.camHeading = 1.57;
+    try { if (this.races) this.races.startRace('strand-gp', this.car); } catch (e) { /* ignore */ }
+    this.car.setPos(-60, 205, 1.57);
+    this.car.speed = 41;
+    try {
+      const rivals = (this.races && this.races.active && this.races.active.rivals) || [];
+      const grid = [[-4, 10], [4, 18], [-4, 26]];
+      rivals.forEach((r, i) => {
+        const off = grid[i % grid.length];
+        const x = -60 + off[1];
+        const z = 205 + off[0];
+        if (r && r.car && r.car.setPos) r.car.setPos(x, z, 1.57);
+      });
+    } catch (e) { /* ignore */ }
+    try { this.police.setWanted(0); } catch (e) { /* ignore */ }
+    try { if (this.city.setSun) this.city.setSun(180, 45, 280, 1.0); } catch (e) { /* ignore */ }
+    this._shotCam = { pos: [-78, 2.4, 208], look: [-10, 1.6, 203] };
+    this.camera.position.set(-78, 2.4, 208);
+    this.camera.lookAt(-10, 1.6, 203);
   }
 
   _fireCombatBurst() {
@@ -1599,7 +1730,7 @@ export class Game {
       if (!car.mesh) continue;
       car.mesh.traverse((o) => {
         if (o.isMesh && o.material && o.material.color && o.material.color.getHex && o.material.color.getHex() === 0x1a1a2a) {
-          o.material.color.setHex(0xf2f2f2);
+          o.material.color.setHex(0x14243f);
         }
       });
     }
@@ -1650,7 +1781,7 @@ export class Game {
     if (shot !== 'vista') this._recolorPolice();
     if (shot === 'chase') {
       this.car.update(dt, this._driveInput(), true);
-      this.car.speed = 42.5;
+      this.car.speed = 37.5;
       this.car.heading = 1.57;
       this.car.mesh.rotation.y = 1.57;
       const px = this.car.x;
@@ -1662,14 +1793,39 @@ export class Game {
           this.police.roadblock[0].setPos(px + 15, 200, 1.57 + Math.PI / 2);
         }
       } catch (e) { /* ignore */ }
-      if (Date.now() >= this._nextBoom) {
-        this.effects.explosion(px + 18, 186, 0.9);
-        this._nextBoom = Date.now() + 1200;
-      }
-      if (this._chaseSun) {
-        this._chaseSun.halo.position.set(px + 280, 120, 190);
-        this._chaseSun.core.position.set(px + 280, 120, 190);
-      }
+      // No repeating fireball in the chase shot: the grounded wreck above
+      // carries the burning-cruiser read (the fireball sprites read as
+      // floating translucent discs at capture time). Re-pin the wreck
+      // ahead of the car every frame, like the roadblock.
+      try {
+        if (this._wreckCar) {
+          this._wreckCar.setPos(px + 24, 195, 1.57 + 0.5);
+          this._wreckCar.speed = 0;
+          if (this._wreckCar.mesh) {
+            this._wreckCar.mesh.rotation.y = 1.57 + 0.5;
+            this._wreckCar.mesh.rotation.z = 0.28;
+          }
+        }
+        if (this._wreckSmoke) {
+          const smokeY = [2.6, 5.2, 8.0, 11.0];
+          this._wreckSmoke.forEach((s, i) => { if (s) s.position.set(px + 24, smokeY[i], 195); });
+        }
+        if (this._wreckEmber) this._wreckEmber.position.set(px + 24, 1.0, 195);
+        // Foreground-sidewalk pedestrians, re-pinned with the pursuit so
+        // their contact shadows stay in frame: three figures in a row on
+        // the light south sidewalk beside the road, speed 0.
+        const wk = this.pedestrians && this.pedestrians.walkers;
+        if (wk) {
+          const spots = [[10, 209.5], [16, 209.8], [22, 209.3]];
+          for (let i = 0; i < 3 && i < wk.length; i++) {
+            const w = wk[i];
+            w.x = px + spots[i][0]; w.z = spots[i][1]; w.speed = 0; w.heading = 1.57;
+            w.group.position.set(w.x, 0, w.z);
+            w.group.rotation.y = 1.57;
+          }
+        }
+      } catch (e) { /* ignore */ }
+      try { if (this.city.setSun) this.city.setSun(px + 280, 120, 190, 1.5); } catch (e) { /* ignore */ }
       this._chaseCam(dt, 7.2, 2.9, 4.5);
       // Heli pinned relative to the CAMERA, not the car: the car drives
       // during the settle, so a car-relative pin drifts behind whatever
@@ -1682,6 +1838,13 @@ export class Game {
         const hx = this.camera.position.x + cfx * 38 + crx * -4;
         const hz = this.camera.position.z + cfz * 38 + crz * -4;
         this._pinHeli(hx, hz, 0, 0, 17);
+        // Spotlight cone angles down toward the pursuit: hold the heli at
+        // a fixed yaw and lean it forward so the cone slants toward the
+        // cars (the per-frame yaw spin would precess any lean).
+        try {
+          const hg = this.police.heli && this.police.heli.group;
+          if (hg) hg.rotation.set(0, 0, -0.18);
+        } catch (e) { /* ignore */ }
       }
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
@@ -1737,7 +1900,19 @@ export class Game {
       const pz = this.player.z;
       try { this.police.update(dt, px, pz, null, null); } catch (e) { /* ignore */ }
       this._pinPolice('combat');
-      this._pinHeli(px, pz, 30, -10);
+      // CONDOR-1 rides higher against the pink sky, clear of the tan
+      // building; cone clamped + softened so it cannot wash the wall.
+      this._pinHeli(px, pz, 34, -16, 14);
+      try {
+        if (this.police.heli) {
+          if (this.police.heli.cone) {
+            this.police.heli.cone.material.opacity = 0.10;
+            this.police.heli.cone.scale.x = 0.7;
+            this.police.heli.cone.scale.z = 0.7;
+          }
+          if (this.police.heli.pool) this.police.heli.pool.material.opacity = 0.15;
+        }
+      } catch (e) { /* ignore */ }
       if (Date.now() >= this._nextMuzzle) {
         this._fireCombatBurst();
         this._nextMuzzle = Date.now() + 250;
@@ -1760,6 +1935,11 @@ export class Game {
         for (const s of this._muzzleFlash) {
           if (s.material) s.material.opacity = (s.userData.baseOp || 1) * f;
         }
+        if (this._tracers) {
+          for (const t of this._tracers) {
+            if (t.material) t.material.opacity = 0.9 * f;
+          }
+        }
         this._muzzleAnchor.scale.setScalar(0.94 + 0.08 * Math.sin(this.elapsed * 27));
       }
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
@@ -1776,6 +1956,20 @@ export class Game {
       this.camera.position.y += (2.6 - this.camera.position.y) * k;
       this.camera.position.z += (tz - this.camera.position.z) * k;
       this.camera.lookAt(px + fx * 8, 1.4, pz + fz * 8);
+    } else if (shot === 'title') {
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+      if (this._shotCam) {
+        this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
+        this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
+      }
+    } else if (shot === 'race') {
+      try { this.traffic.update(dt); } catch (e) { /* ignore */ }
+      try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }
+      if (this._shotCam) {
+        this.camera.position.set(this._shotCam.pos[0], this._shotCam.pos[1], this._shotCam.pos[2]);
+        this.camera.lookAt(this._shotCam.look[0], this._shotCam.look[1], this._shotCam.look[2]);
+      }
     } else if (shot === 'vista') {
       try { this.traffic.update(dt); } catch (e) { /* ignore */ }
       try { this.pedestrians.update(dt, []); } catch (e) { /* ignore */ }

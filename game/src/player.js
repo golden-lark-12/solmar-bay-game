@@ -3,6 +3,21 @@
 
 import { clamp } from './utils.js';
 
+let _contactShadowTex = null;
+function contactShadowTexture(THREE) {
+  if (_contactShadowTex) return _contactShadowTex;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  _contactShadowTex = new THREE.CanvasTexture(c);
+  return _contactShadowTex;
+}
+
 export class Player {
   constructor(THREE, scene, x, z) {
     this.THREE = THREE;
@@ -25,6 +40,14 @@ export class Player {
     this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.62, 0.22), jacket);
     this.armL.position.set(-0.42, 1.2, 0); this.group.add(this.armL);
     this.armR = this.armL.clone(); this.armR.position.x = 0.42; this.group.add(this.armR);
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4, 1.4),
+      new THREE.MeshBasicMaterial({ map: contactShadowTexture(THREE), transparent: true, opacity: 0.55, depthWrite: false })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.045;
+    shadow.name = 'contact-shadow';
+    this.group.add(shadow);
     this.group.position.set(x || 0, 0, z || 0);
     this.heading = 0;
     this.group.rotation.y = 0;

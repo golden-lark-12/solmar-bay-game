@@ -124,13 +124,13 @@ export class Effects {
     // headless frame), so a near-full-opacity burst is in every frame.
     const coreStops = [[0, 'rgba(255,175,45,1)'], [0.35, 'rgba(255,130,20,1)'], [0.7, 'rgba(240,70,0,0.95)'], [1, 'rgba(210,40,0,0)']];
     const haloStops = [[0, 'rgba(255,140,30,0.7)'], [0.5, 'rgba(255,100,12,0.45)'], [1, 'rgba(220,55,0,0)']];
-    this._sprite(haloStops, 3.0, 0.6, false, x, y, z, 0.55, 5);
-    this._spriteTex(this._starTexture(), 2.4, 1, false, x, y, z, 0.55, 6);
-    this._sprite(coreStops, 1.7, 1, false, x, y, z, 0.55, 7);
+    this._sprite(haloStops, 1.05, 0.6, false, x, y, z, 0.55, 5);
+    this._spriteTex(this._starTexture(), 0.84, 1, false, x, y, z, 0.55, 6);
+    this._sprite(coreStops, 0.6, 1, false, x, y, z, 0.55, 7);
     // Solid orange core ball: a real saturated disc even where the
     // gradient centre is pale, so the burst centre cannot wash out.
     const core = new this.THREE.Mesh(
-      new this.THREE.SphereGeometry(0.24, 12, 10),
+      new this.THREE.SphereGeometry(0.085, 12, 10),
       new this.THREE.MeshBasicMaterial({ color: 0xe85d00, transparent: true, opacity: 0.95 })
     );
     core.position.set(x, y, z);
@@ -138,12 +138,12 @@ export class Effects {
     this._add(core, 0.55, 0.95, { grow: 0.25 });
     // Sparks right at the muzzle: small saturated flecks around the tip.
     for (let i = 0; i < 6; i++) {
-      const ox = (Math.random() - 0.5) * 1.8;
-      const oy = (Math.random() - 0.5) * 1.4;
-      const oz = (Math.random() - 0.5) * 1.8;
+      const ox = (Math.random() - 0.5) * 0.63;
+      const oy = (Math.random() - 0.5) * 0.49;
+      const oz = (Math.random() - 0.5) * 0.63;
       this._sprite(
         [[0, 'rgba(255,235,150,1)'], [0.5, 'rgba(255,160,40,0.95)'], [1, 'rgba(240,80,0,0)']],
-        0.7 + Math.random() * 0.4, 1, false,
+        0.25 + Math.random() * 0.14, 1, false,
         x + ox, y + oy, z + oz, 0.6, 6
       );
     }

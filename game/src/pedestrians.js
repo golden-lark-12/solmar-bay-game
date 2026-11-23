@@ -3,6 +3,21 @@
 
 import { rand, pick, dist2d } from './utils.js';
 
+let _contactShadowTex = null;
+function contactShadowTexture(THREE) {
+  if (_contactShadowTex) return _contactShadowTex;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  _contactShadowTex = new THREE.CanvasTexture(c);
+  return _contactShadowTex;
+}
+
 const FIRST = ['Mara', 'Tomas', 'Iris', 'Dario', 'Lena', 'Gus', 'Sable', 'Rex', 'Nia', 'Omar', 'Cleo', 'Vic', 'Ana', 'Leo', 'Mina', 'Rosa', 'Hugo', 'Tara'];
 const LAST = ['Vega', 'Rook', 'Vale', 'Maro', 'Kade', 'Ferran', 'Quinn', 'Calder', 'Sol', 'Reyes', 'Luna', 'Costa', 'Marin', 'Diaz', 'Faro', 'Nunez'];
 const SHIRT = [0xff4a6a, 0x4ad8ff, 0xffd76a, 0x6aff8a, 0xff8a4a, 0x8a4aff, 0xf0f0f0, 0x2ad8c8];
@@ -32,6 +47,14 @@ export class Pedestrians {
       const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.66, 0.22), pants);
       legL.position.set(-0.14, 0.35, 0); g.add(legL);
       const legR = legL.clone(); legR.position.x = 0.14; g.add(legR);
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.3, 1.3),
+        new THREE.MeshBasicMaterial({ map: contactShadowTexture(THREE), transparent: true, opacity: 0.55, depthWrite: false })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.045;
+      shadow.name = 'contact-shadow';
+      g.add(shadow);
       g.position.set(x, 0, z);
       this.scene.add(g);
       this.walkers.push({

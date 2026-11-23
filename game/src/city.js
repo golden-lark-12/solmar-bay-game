@@ -114,13 +114,60 @@ export function buildCity(THREE, scene) {
   beach.position.set(0, 0.02, 270);
   group.add(beach);
 
+  const waterTexCanvas = document.createElement('canvas');
+  waterTexCanvas.width = 256;
+  waterTexCanvas.height = 256;
+  const waterTexCtx = waterTexCanvas.getContext('2d');
+  const waveImg = waterTexCtx.createImageData(256, 256);
+  for (let wy = 0; wy < 256; wy++) {
+    for (let wx = 0; wx < 256; wx++) {
+      const wi = (wy * 256 + wx) * 4;
+      waveImg.data[wi] = 128 + 90 * Math.sin(wx * 0.11 + Math.sin(wy * 0.07) * 2.2) * Math.cos(wy * 0.05);
+      waveImg.data[wi + 1] = 128 + 90 * Math.sin(wy * 0.13 + Math.sin(wx * 0.06) * 2.0) * Math.cos(wx * 0.04);
+      waveImg.data[wi + 2] = 255;
+      waveImg.data[wi + 3] = 255;
+    }
+  }
+  waterTexCtx.putImageData(waveImg, 0, 0);
+  const waveTex = new THREE.CanvasTexture(waterTexCanvas);
+  waveTex.wrapS = THREE.RepeatWrapping;
+  waveTex.wrapT = THREE.RepeatWrapping;
+  waveTex.repeat.set(24, 10);
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(640, 280),
-    new THREE.MeshStandardMaterial({ color: 0x2a8a9a, roughness: 0.35, metalness: 0.15 })
+    new THREE.MeshStandardMaterial({ color: 0x12333f, roughness: 0.14, metalness: 0.85, normalMap: waveTex, normalScale: new THREE.Vector2(0.9, 0.9) })
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set(0, 0.04, 440);
   group.add(water);
+  const glintCanvas = document.createElement('canvas');
+  glintCanvas.width = 128;
+  glintCanvas.height = 512;
+  const glintCtx = glintCanvas.getContext('2d');
+  const glintGrad = glintCtx.createRadialGradient(64, 256, 0, 64, 256, 256);
+  glintGrad.addColorStop(0, 'rgba(255,215,106,0.9)');
+  glintGrad.addColorStop(0.5, 'rgba(255,180,80,0.4)');
+  glintGrad.addColorStop(1, 'rgba(255,150,50,0)');
+  glintCtx.fillStyle = glintGrad;
+  glintCtx.fillRect(0, 0, 128, 512);
+  const glintTex = new THREE.CanvasTexture(glintCanvas);
+  const glint = new THREE.Mesh(
+    new THREE.PlaneGeometry(190, 26),
+    new THREE.MeshBasicMaterial({ map: glintTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  glint.rotation.set(-Math.PI / 2, 0, -0.033);
+  glint.position.set(-120, 0.06, 430);
+  group.add(glint);
+  // Two more sunlit bands so the glitter reads across the whole bay.
+  for (const [gx, gz, go] of [[40, 425, 0.42], [190, 438, 0.36]]) {
+    const extra = new THREE.Mesh(
+      new THREE.PlaneGeometry(150, 20),
+      new THREE.MeshBasicMaterial({ map: glintTex, transparent: true, opacity: go, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    extra.rotation.set(-Math.PI / 2, 0, -0.033);
+    extra.position.set(gx, 0.06, gz);
+    group.add(extra);
+  }
 
   // --- Roads: lighter grey, dashes, edge lines, crosswalks ------------------
   const roadMat = std(0x6f6f78, 0.9, 0);
@@ -166,18 +213,32 @@ export function buildCity(THREE, scene) {
   // Palms + benches along the Strand sidewalks.
   const trunkMat = std(0x8a6a3a, 0.9, 0);
   const palmMat = std(0x3a8a4a, 0.8, 0);
+  const frondGeo = new THREE.PlaneGeometry(0.55, 3.4, 1, 3);
+  frondGeo.translate(0, 1.7, 0);
+  {
+    const pos = frondGeo.attributes.position;
+    for (let vi = 0; vi < pos.count; vi++) {
+      const vy = pos.getY(vi);
+      const t = vy / 3.4;
+      pos.setZ(vi, pos.getZ(vi) + 1.2 * t * t);
+    }
+    frondGeo.computeVertexNormals();
+  }
+  const frondMat = new THREE.MeshStandardMaterial({ color: 0x1d3d2a, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
   function palm(x, z) {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 5, 8), trunkMat);
     trunk.position.set(x, 2.5, z);
+    trunk.rotation.z = 0.12;
     group.add(trunk);
-    const top = new THREE.Mesh(new THREE.SphereGeometry(2.1, 10, 8), palmMat);
-    top.scale.set(1, 0.45, 1);
-    top.position.set(x, 5.4, z);
-    group.add(top);
-    const top2 = new THREE.Mesh(new THREE.SphereGeometry(1.4, 10, 8), palmMat);
-    top2.scale.set(1, 0.4, 1);
-    top2.position.set(x + 0.8, 5.0, z + 0.4);
-    group.add(top2);
+    for (let i = 0; i < 7; i++) {
+      const holder = new THREE.Group();
+      holder.position.set(x - 0.3, 5.0, z);
+      holder.rotation.y = (i * Math.PI * 2) / 7;
+      const frond = new THREE.Mesh(frondGeo, frondMat);
+      frond.rotation.x = 1.30 + (i % 3) * 0.18;
+      holder.add(frond);
+      group.add(holder);
+    }
   }
   function bench(x, z) {
     addBox(2.2, 0.18, 0.8, 0x8a6a3a, x, 0.5, z);
@@ -228,7 +289,12 @@ export function buildCity(THREE, scene) {
         new THREE.PlaneGeometry(sign.w || 9, sign.h || 2.2),
         new THREE.MeshBasicMaterial({ map: tex, transparent: false })
       );
-      sm.position.set(x, (sign.y || h * 0.72), z + d / 2 + 0.12);
+      if (sign.face === 'west') {
+        sm.position.set(x - w / 2 - 0.12, (sign.y || h * 0.72), z);
+        sm.rotation.y = -Math.PI / 2;
+      } else {
+        sm.position.set(x, (sign.y || h * 0.72), z + d / 2 + 0.12);
+      }
       group.add(sm);
     }
     return b;
@@ -266,11 +332,11 @@ export function buildCity(THREE, scene) {
   building(-8, 165, 14, 8, 12, 0xcf8f6b, 0xa85a4a, null);
   // Billboard tower.
   building(60, 160, 11, 26, 11, 0x7a6a8a, 0x6b4a3a, {
-    text: 'SOLMAR BAY', bg: '#12283a', fg: '#7ad8ff', border: '#7ad8ff', w: 13, h: 3, y: 20
+    text: 'ALBA BAY', bg: '#12283a', fg: '#7ad8ff', border: '#7ad8ff', w: 13, h: 3, y: 20
   });
   // Casino Luna — magenta, neon sign, light beam.
   building(190, 250, 30, 22, 24, 0xc82a8a, 0x8a2a6a, {
-    text: 'CASINO LUNA', bg: '#1a0a24', fg: '#ff7ad8', border: '#ff7ad8', w: 20, h: 3.4, y: 17
+    text: 'CASINO LUNA', bg: '#1a0a24', fg: '#ff7ad8', border: '#ff7ad8', w: 20, h: 3.4, y: 17, face: 'west'
   });
   addBox(30.5, 0.5, 24.5, 0xff7ad8, 190, 12.5, 250, {
     material: new THREE.MeshBasicMaterial({ color: 0xff7ad8 })
@@ -446,7 +512,7 @@ export function buildCity(THREE, scene) {
   const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: glowTexture(THREE), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending
   }));
-  sunGlow.scale.set(220, 220, 1);
+  sunGlow.scale.set(110, 110, 1);
   sunGlow.position.set(-420, 95, 420);
   group.add(sunGlow);
 
@@ -482,5 +548,13 @@ export function buildCity(THREE, scene) {
     ];
   }
 
-  return { group, colliders, beam, ferrisWheel, sunBall, sunGlow, isWater, clampToWorld };
+  function setSun(x, y, z, scale) {
+    const s = scale !== undefined && scale !== null ? scale : 1;
+    sunBall.position.set(x, y, z);
+    sunGlow.position.set(x, y, z);
+    sunBall.scale.set(s, s, s);
+    sunGlow.scale.set(110 * s, 110 * s, 1);
+  }
+
+  return { group, colliders, beam, ferrisWheel, sunBall, sunGlow, setSun, isWater, clampToWorld };
 }

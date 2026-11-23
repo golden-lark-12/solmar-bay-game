@@ -50,6 +50,21 @@ function box(THREE, w, h, d, color, opts) {
   return mesh;
 }
 
+let _contactShadowTex = null;
+function contactShadowTexture(THREE) {
+  if (_contactShadowTex) return _contactShadowTex;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  _contactShadowTex = new THREE.CanvasTexture(c);
+  return _contactShadowTex;
+}
+
 export function makeCarMesh(THREE, color, opts) {
   const o = opts || {};
   const g = new THREE.Group();
@@ -121,6 +136,11 @@ export function makeCarMesh(THREE, color, opts) {
     const blue = box(THREE, 0.6, 0.2, 0.46, 0x2a6aff, { emissive: 0x2a6aff, emissiveIntensity: 2.2, name: 'lightbar-blue' });
     blue.position.set(0.32, 1.56, -0.3);
     g.add(blue);
+    for (const sx of [-1.06, 1.06]) {
+      const panel = box(THREE, 0.06, 0.45, 1.9, 0xf2f2f2, { name: 'door-panel' });
+      panel.position.set(sx, 0.55, 0);
+      g.add(panel);
+    }
   }
 
   // Driver silhouette: dark torso + skin-tone head, left seat.
@@ -132,10 +152,19 @@ export function makeCarMesh(THREE, color, opts) {
       new THREE.SphereGeometry(0.22, 12, 10),
       new THREE.MeshStandardMaterial({ color: 0xd8a878, roughness: 0.7 })
     );
-    head.position.set(-0.4, 1.58, 0.1);
+    head.position.set(-0.4, 1.18, 0.1);
     head.name = 'driver-head';
     g.add(head);
   }
+
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.4, 3.2),
+    new THREE.MeshBasicMaterial({ map: contactShadowTexture(THREE), transparent: true, opacity: 0.55, depthWrite: false })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.045;
+  shadow.name = 'contact-shadow';
+  g.add(shadow);
 
   return g;
 }

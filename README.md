@@ -4,6 +4,8 @@
 
 # Puerto Alba — an open-world crime story
 
+Puerto Alba: 3D golden-hour open-world crime — 12 'The Debt' story jobs as Ria Solano, 5 districts, 5-star tactical dispatch (P-12/P-07 pursuit & ramming, roadblocks, CONDOR-1 spotlight air unit), on-foot & vehicle combat, weapon wheel, crew abilities, street races, garage, ALBA FM radio & saves.
+
 A sun-soaked coastal open-world crime game that runs entirely from static
 files under `game/`. No build step, no network requests, no accounts.
 Open `game/index.html` in desktop Chrome (or run `node serve.ts` and visit
@@ -127,10 +129,10 @@ game/
 
 ## Screenshots
 
-- `screenshots/1-cover.jpg` — the cover: Ria's car nose-right in a 5-star chase, ALBA sign and low sun
-- `screenshots/2-briefing.jpg` — the briefing for the final job, one M8 panel
-- `screenshots/3-combat.jpg` — on-foot firefight beside a burning cruiser, weapon wheel open
-- `screenshots/4-vista.jpg` — low from the water: pier, lighthouse, ferris wheel, city at sunset
+- `screenshots/1-title.jpg` — live 3D title screen at the waterfront, Ria's car, lighthouse, ferris wheel, Casino Luna, zero gameplay HUD
+- `screenshots/2-chase.jpg` — 5-star high-speed chase at 135 km/h, nitro, two-tone cruisers, CONDOR-1 spotlight
+- `screenshots/3-combat.jpg` — on-foot shootout, small muzzle flash + tracers, corner Don Rafael comms, no Tab panel
+- `screenshots/4-race.jpg` — twilight street race on the Strand
 
 Take fresh ones with `node take-shots.mjs`. Run the full playtest with
 `node playtest.mjs`.

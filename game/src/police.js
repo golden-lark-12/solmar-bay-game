@@ -63,7 +63,7 @@ export class Police {
   _spawnCar(x, z, heading) {
     const car = new Car(this.THREE, this.scene, {
       x, z, heading,
-      color: 0x1a1a2a,
+      color: 0x14243f,
       name: 'Interceptor',
       topSpeed: this.chaseTopSpeed,
       accel: 16,
@@ -217,9 +217,9 @@ export class Police {
     // WIDE spotlight cone: heli to ground, translucent warm white.
     const coneH = 18;
     const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(7.5, coneH, 20, 1, true),
+      new THREE.ConeGeometry(5.5, coneH, 20, 1, true),
       new THREE.MeshBasicMaterial({
-        color: 0xfff2b0, transparent: true, opacity: 0.30,
+        color: 0xfff2b0, transparent: true, opacity: 0.18,
         side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
       })
     );
@@ -230,8 +230,8 @@ export class Police {
     inner.add(cone);
     // Bright pool of light on the road below.
     const pool = new THREE.Mesh(
-      new THREE.CircleGeometry(6.5, 24),
-      new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.34, depthWrite: false })
+      new THREE.CircleGeometry(5.0, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.30, depthWrite: false })
     );
     pool.rotation.x = -Math.PI / 2;
     pool.position.y = -17.4;
@@ -253,7 +253,7 @@ export class Police {
       const car = new Car(this.THREE, this.scene, {
         x: px + rx * off, z: pz + rz * off,
         heading: heading + Math.PI / 2,
-        color: 0x1a1a2a, name: 'Interceptor',
+        color: 0x14243f, name: 'Interceptor',
         topSpeed: this.chaseTopSpeed, accel: 16, isPolice: true,
       });
       this.roadblock.push(car);
