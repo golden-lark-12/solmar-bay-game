@@ -114,6 +114,17 @@ export class Effects {
     this._add(light, 0.7, 6, {});
   }
 
+  burnPuffs(x, z) {
+    const smokeStops = [[0, 'rgba(120,120,120,0.6)'], [1, 'rgba(80,80,80,0)']];
+    const flameStops = [[0, 'rgba(255,180,60,1)'], [0.5, 'rgba(255,100,10,0.95)'], [1, 'rgba(200,40,0,0)']];
+    const puffA = this._sprite(smokeStops, 2.2, 0.6, false, x - 0.7, 1.8, z - 0.5);
+    const puffB = this._sprite(smokeStops, 2.8, 0.6, false, x + 0.7, 2.6, z + 0.5);
+    const flame = this._sprite(flameStops, 1.4, 1, true, x, 1.2, z);
+    for (const puff of [puffA, puffB]) {
+      if (puff) { puff.maxLife = 1.2; puff.rise = true; }
+    }
+    if (flame) { flame.maxLife = 0.9; }
+  }
   muzzle(x, y, z) {
     // Bright burst at the gun tip: saturated orange core + halo + star +
     // solid core ball + sparks at the muzzle. NORMAL blending, not

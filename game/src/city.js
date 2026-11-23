@@ -135,7 +135,7 @@ export function buildCity(THREE, scene) {
   waveTex.repeat.set(24, 10);
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(640, 280),
-    new THREE.MeshStandardMaterial({ color: 0x12333f, roughness: 0.14, metalness: 0.85, normalMap: waveTex, normalScale: new THREE.Vector2(0.9, 0.9) })
+    new THREE.MeshStandardMaterial({ color: 0x1b4a58, roughness: 0.14, metalness: 0.85, normalMap: waveTex, normalScale: new THREE.Vector2(0.9, 0.9) })
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set(0, 0.04, 440);
@@ -167,6 +167,37 @@ export function buildCity(THREE, scene) {
     extra.rotation.set(-Math.PI / 2, 0, -0.033);
     extra.position.set(gx, 0.06, gz);
     group.add(extra);
+  }
+  // Thin horizontal sunset ripple bands across the water.
+  const bandCanvas = document.createElement('canvas');
+  bandCanvas.width = 256;
+  bandCanvas.height = 16;
+  const bandCtx = bandCanvas.getContext('2d');
+  const bandGrad = bandCtx.createLinearGradient(0, 0, 256, 0);
+  bandGrad.addColorStop(0, 'rgba(255,215,106,0)');
+  bandGrad.addColorStop(0.25, 'rgba(255,215,106,0.7)');
+  bandGrad.addColorStop(0.5, 'rgba(255,180,80,0.9)');
+  bandGrad.addColorStop(0.75, 'rgba(255,215,106,0.7)');
+  bandGrad.addColorStop(1, 'rgba(255,215,106,0)');
+  bandCtx.fillStyle = bandGrad;
+  bandCtx.fillRect(0, 0, 256, 16);
+  const bandFall = bandCtx.createLinearGradient(0, 0, 0, 16);
+  bandFall.addColorStop(0, 'rgba(0,0,0,0)');
+  bandFall.addColorStop(0.5, 'rgba(0,0,0,1)');
+  bandFall.addColorStop(1, 'rgba(0,0,0,0)');
+  bandCtx.globalCompositeOperation = 'destination-in';
+  bandCtx.fillStyle = bandFall;
+  bandCtx.fillRect(0, 0, 256, 16);
+  bandCtx.globalCompositeOperation = 'source-over';
+  const bandTex = new THREE.CanvasTexture(bandCanvas);
+  for (const [bx, bz, bo] of [[-140, 432, 0.55], [30, 445, 0.65], [170, 455, 0.5], [-40, 430, 0.6]]) {
+    const band = new THREE.Mesh(
+      new THREE.PlaneGeometry(280, 2.5),
+      new THREE.MeshBasicMaterial({ map: bandTex, transparent: true, opacity: bo, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    band.rotation.set(-Math.PI / 2, 0, -0.033);
+    band.position.set(bx, 0.06, bz);
+    group.add(band);
   }
 
   // --- Roads: lighter grey, dashes, edge lines, crosswalks ------------------

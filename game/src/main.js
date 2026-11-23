@@ -1409,14 +1409,14 @@ export class Game {
     });
     this._wreckCar.speed = 0;
     try {
-      const smokeStops = [[0, 'rgba(38,36,34,0.62)'], [0.6, 'rgba(30,28,26,0.4)'], [1, 'rgba(24,22,20,0)']];
+      const smokeStops = [[0, 'rgba(30,28,26,0.78)'], [0.6, 'rgba(24,22,20,0.5)'], [1, 'rgba(18,16,14,0)']];
       this._wreckSmoke = [];
-      const smokeAt = [[-16, 2.6, 195, 3.0], [-16, 5.2, 195, 4.2], [-16, 8.0, 195, 5.4], [-16, 11.0, 195, 6.6]];
+      const smokeAt = [[-16, 2.6, 195, 3.6], [-16, 5.4, 195, 4.8], [-16, 8.4, 195, 6.0], [-16, 11.6, 195, 7.2], [-16, 14.8, 195, 8.4], [-16, 18.0, 195, 9.6]];
       for (const [sx, sy, sz, ss] of smokeAt) {
         this._wreckSmoke.push(this.effects._sprite(smokeStops, ss, 0.6, false, sx, sy, sz));
       }
-      const emberStops = [[0, 'rgba(255,150,30,1)'], [0.5, 'rgba(240,80,0,0.9)'], [1, 'rgba(180,30,0,0)']];
-      this._wreckEmber = this.effects._sprite(emberStops, 1.1, 1, true, -16, 1.0, 195);
+      const emberStops = [[0, 'rgba(255,180,60,1)'], [0.5, 'rgba(255,100,10,0.95)'], [1, 'rgba(200,40,0,0)']];
+      this._wreckEmber = this.effects._sprite(emberStops, 1.7, 1, true, -16, 1.2, 195);
     } catch (e) { /* ignore */ }
     this._nextBoom = Infinity;
     try { if (this.city.setSun) this.city.setSun(this.car.x + 280, 120, 190, 1.5); } catch (e) { /* ignore */ }
@@ -1690,8 +1690,8 @@ export class Game {
     } catch (e) { /* ignore */ }
     try { this.police.setWanted(0); } catch (e) { /* ignore */ }
     try { if (this.city.setSun) this.city.setSun(180, 45, 280, 1.0); } catch (e) { /* ignore */ }
-    this._shotCam = { pos: [-78, 2.4, 208], look: [-10, 1.6, 203] };
-    this.camera.position.set(-78, 2.4, 208);
+    this._shotCam = { pos: [-82, 3.0, 209], look: [-10, 1.6, 203] };
+    this.camera.position.set(-82, 3.0, 209);
     this.camera.lookAt(-10, 1.6, 203);
   }
 
@@ -1803,11 +1803,11 @@ export class Game {
           this._wreckCar.speed = 0;
           if (this._wreckCar.mesh) {
             this._wreckCar.mesh.rotation.y = 1.57 + 0.5;
-            this._wreckCar.mesh.rotation.z = 0.28;
+            this._wreckCar.mesh.rotation.z = 0.38;
           }
         }
         if (this._wreckSmoke) {
-          const smokeY = [2.6, 5.2, 8.0, 11.0];
+          const smokeY = [2.6, 5.4, 8.4, 11.6, 14.8, 18.0];
           this._wreckSmoke.forEach((s, i) => { if (s) s.position.set(px + 24, smokeY[i], 195); });
         }
         if (this._wreckEmber) this._wreckEmber.position.set(px + 24, 1.0, 195);
@@ -1816,7 +1816,7 @@ export class Game {
         // the light south sidewalk beside the road, speed 0.
         const wk = this.pedestrians && this.pedestrians.walkers;
         if (wk) {
-          const spots = [[10, 209.5], [16, 209.8], [22, 209.3]];
+          const spots = [[20, 209.5], [26, 209.8], [32, 209.3]];
           for (let i = 0; i < 3 && i < wk.length; i++) {
             const w = wk[i];
             w.x = px + spots[i][0]; w.z = spots[i][1]; w.speed = 0; w.heading = 1.57;
@@ -1923,8 +1923,7 @@ export class Game {
         try {
           const lead = this.police.cars && this.police.cars[0];
           if (lead) {
-            this.effects.explosion(lead.x, lead.z, 0.45);
-            this.effects.smoke(lead.x, 2.5, lead.z);
+            this.effects.burnPuffs(lead.x, lead.z);
           }
         } catch (e) { /* ignore */ }
         this._nextBurn = Date.now() + 900;

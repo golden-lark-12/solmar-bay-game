@@ -120,7 +120,7 @@ async function main() {
       await sleep(5000);
       const state = await cdp.send('Runtime.evaluate', { expression: 'JSON.stringify(window.__gameState())', returnByValue: true });
       console.log(shot.name + ' state: ' + (state.result ? state.result.value : 'n/a'));
-      const shotRes = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 });
+      const shotRes = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 92 });
       const buf = Buffer.from(shotRes.data, 'base64');
       fs.writeFileSync(path.join(SHOTS_DIR, shot.name), buf);
       console.log(shot.name + ': ' + buf.length + ' bytes');

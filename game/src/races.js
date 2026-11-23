@@ -38,14 +38,20 @@ export class Races {
       rivals.push({ car: c, cpIndex: 0, finished: false, time: 0 });
     }
     const markers = [];
-    const ringGeo = new THREE.TorusGeometry(5.5, 0.55, 8, 24);
+    const ringGeo = new THREE.TorusGeometry(5.5, 0.30, 8, 32);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd76a });
+    const innerGeo = new THREE.TorusGeometry(4.4, 0.16, 8, 32);
+    const innerMat = new THREE.MeshBasicMaterial({ color: 0x2ee6d6 });
     for (const [x, z] of def.checkpoints) {
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.y = Math.PI / 2;
       ring.position.set(x, 5.5, z);
       this.scene.add(ring);
       markers.push(ring);
+      const inner = new THREE.Mesh(innerGeo, innerMat);
+      inner.rotation.y = Math.PI / 2;
+      inner.position.set(x, 5.5, z);
+      this.scene.add(inner);
     }
     this.active = { def, cpIndex: 0, time: 0, rivals, markers, finished: false };
     return this.active;
